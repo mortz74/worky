@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useApp } from '../contexts/AppContext'
 import { sb } from '../lib/supabase'
@@ -16,11 +17,18 @@ const NavIcon = ({ path }) => {
 export default function Sidebar() {
   const { user, data } = useApp()
   const navigate = useNavigate()
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true')
+
+  const toggleCollapsed = () => {
+    const next = !collapsed
+    setCollapsed(next)
+    localStorage.setItem('sidebar-collapsed', String(next))
+  }
 
   const initials = user?.user_metadata?.initials
     || (user?.email ? user.email.slice(0, 2).toUpperCase() : 'AK')
   const displayName = user?.user_metadata?.name || user?.email || 'User'
-  const role = data.owners[0]?.role || 'Owner'
+  const role = 'Owner'
 
   const activeTasks   = data.tasks.filter(t => t.active && t.status !== 'done').length
   const activeProjects = data.projects.filter(p => p.status === 'active').length
@@ -35,29 +43,30 @@ export default function Sidebar() {
     { path: '/tasks',     label: 'Tasks',     badge: activeTasks,   section: 'WORKSPACE' },
     { path: '/projects',  label: 'Projects',  badge: activeProjects },
     { path: '/assignees', label: 'Assignees', section: 'PEOPLE' },
-    { path: '/owners',    label: 'Owners' },
   ]
 
   return (
-    <div className="sidebar">
-      <div className="sidebar-logo">
+    <div className={`sidebar${collapsed ? ' sidebar-collapsed' : ''}`}>
+      <div className="sidebar-logo" onClick={toggleCollapsed} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
         <div className="logo-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" width="18" height="18"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
         </div>
-        <span className="logo-text">Worky</span>
+        {!collapsed && <span className="logo-text">Worky</span>}
       </div>
 
       <nav className="sidebar-nav">
         {navItems.map((item, i) => (
           <div key={item.path}>
-            {item.section && <div className="nav-section">{item.section}</div>}
+            {!collapsed && item.section && <div className="nav-section">{item.section}</div>}
             <NavLink
               to={item.path}
-              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+              title={collapsed ? item.label : ''}
+              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}${collapsed ? ' nav-item-collapsed' : ''}`}
             >
               <NavIcon path={item.path.slice(1)} />
-              <span>{item.label}</span>
-              {item.badge > 0 && <span className="nav-badge">{item.badge}</span>}
+              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && item.badge > 0 && <span className="nav-badge">{item.badge}</span>}
+              {collapsed && item.badge > 0 && <span className="nav-badge-dot"></span>}
             </NavLink>
           </div>
         ))}
@@ -65,17 +74,21 @@ export default function Sidebar() {
 
       <div className="sidebar-footer">
         <div className="sidebar-user">
-          <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: '#3b82f6', color: '#fff' }}>
+          <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: '#3b82f6', color: '#fff', flexShrink: 0 }}>
             {initials}
           </div>
-          <div className="sidebar-user-info">
-            <div className="sidebar-user-name">{displayName}</div>
-            <div className="sidebar-user-role">{role}</div>
-          </div>
+          {!collapsed && (
+            <div className="sidebar-user-info">
+              <div className="sidebar-user-name">{displayName}</div>
+              <div className="sidebar-user-role">{role}</div>
+            </div>
+          )}
         </div>
-        <button className="btn-icon-sm" onClick={handleSignOut} title="Sign out" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)', padding: 4 }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </button>
+        {!collapsed && (
+          <button className="btn-icon-sm" onClick={handleSignOut} title="Sign out" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)', padding: 4 }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+        )}
       </div>
     </div>
   )

@@ -5,7 +5,7 @@ const AppContext = createContext(null)
 
 // ── DB → local mappers ────────────────────────────────────────
 const mapOwner    = r => ({ id: r.id, name: r.name, email: r.email, role: r.role || 'Owner', color: r.color || '#2563eb', initials: r.initials || r.name.slice(0,2).toUpperCase() })
-const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', photoUrl: r.photo_url || '' })
+const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false })
 const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '' })
 
 // Tasks now carry assigneeIds[] and projectIds[] from the junction tables.
@@ -74,6 +74,7 @@ const toLocalAssignee = u => {
   if ('color'     in u) m.color    = u.color
   if ('initials'  in u) m.initials = u.initials
   if ('photo_url' in u) m.photoUrl = u.photo_url
+  if ('is_owner'  in u) m.isOwner  = u.is_owner
   return m
 }
 
@@ -202,6 +203,15 @@ export function AppProvider({ children }) {
     return task
   }, [showToast])
 
+  const deleteTask = useCallback(async (taskId) => {
+    await sb.from('task_assignees').delete().eq('task_id', taskId).eq('user_id', user.id)
+    await sb.from('task_projects').delete().eq('task_id', taskId).eq('user_id', user.id)
+    const { error } = await sb.from('tasks').delete().eq('id', taskId).eq('user_id', user.id)
+    if (error) { showToast(error.message, 'error'); return false }
+    setData(d => ({ ...d, tasks: d.tasks.filter(t => t.id !== taskId) }))
+    return true
+  }, [user, showToast])
+
   // ── Project mutations ─────────────────────────────────────
   const updateProject = useCallback(async (projectId, updates) => {
     const { error } = await sb.from('projects').update(updates).eq('id', projectId).eq('user_id', user.id)
@@ -232,13 +242,27 @@ export function AppProvider({ children }) {
     return mapAssignee(res)
   }, [showToast])
 
+  // Sets one assignee as the owner; clears is_owner on all others for this user
+  const setOwnerAssignee = useCallback(async (assigneeId) => {
+    // Clear existing owner(s) first
+    await sb.from('assignees').update({ is_owner: false }).eq('user_id', user.id).eq('is_owner', true)
+    // Set the new owner
+    const { error } = await sb.from('assignees').update({ is_owner: true }).eq('id', assigneeId).eq('user_id', user.id)
+    if (error) { showToast(error.message, 'error'); return false }
+    setData(d => ({
+      ...d,
+      assignees: d.assignees.map(a => ({ ...a, isOwner: a.id === assigneeId }))
+    }))
+    return true
+  }, [user, showToast])
+
   return (
     <AppContext.Provider value={{
       user, authReady, data, loadData,
       getAssignee, getProject, getOwner,
-      updateTask, createTask,
+      updateTask, createTask, deleteTask,
       updateProject, createProject,
-      updateAssignee, createAssignee,
+      updateAssignee, createAssignee, setOwnerAssignee,
       showToast, toast,
     }}>
       {children}

@@ -83,11 +83,9 @@ export default function EditTaskModal({ task: t, open, onClose, onSave }) {
         <div className="form-group">
           <label className="form-label">Status</label>
           <select className="form-select" value={form.status} onChange={e => set('status', e.target.value)}>
-            <option value="todo">To Do</option>
+            <option value="todo">Inbox</option>
             <option value="inprogress">In Progress</option>
-            <option value="review">In Review</option>
             <option value="done">Done</option>
-            <option value="blocked">Blocked</option>
           </select>
         </div>
         <div className="form-group">

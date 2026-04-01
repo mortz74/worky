@@ -76,11 +76,9 @@ export default function TaskDetail() {
                   <select className="form-select" style={{ fontSize: 13 }}
                     value={t.status}
                     onChange={e => save({ status: e.target.value, ...(e.target.value === 'done' ? { active: false } : {}) }, 'Status updated')}>
-                    <option value="todo">To Do</option>
+                    <option value="todo">Inbox</option>
                     <option value="inprogress">In Progress</option>
-                    <option value="review">In Review</option>
                     <option value="done">Done</option>
-                    <option value="blocked">Blocked</option>
                   </select>
                 </div>
 

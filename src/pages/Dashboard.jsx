@@ -32,9 +32,12 @@ function DashboardTaskRow({ task, onEdit, onMenuAction }) {
     <tr>
       <td style={{ fontWeight: 600, color: 'var(--slate-800)', cursor: 'pointer' }} onClick={() => navigate(`/tasks/${task.id}`)}>{task.name}</td>
       <td><span style={{ fontSize: 12 }}>{projLabel}</span></td>
-      <td>
+      <td onClick={e => e.stopPropagation()}>
         {firstAssignee
-          ? <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          ? <div
+              style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}
+              onClick={() => navigate(`/assignees/${firstAssignee.id}`)}
+            >
               <Avatar assigneeId={firstAssignee.id} size={24} />
               <span>{firstAssignee.name}{moreAssignees > 0 ? ` +${moreAssignees}` : ''}</span>
             </div>
@@ -48,7 +51,7 @@ function DashboardTaskRow({ task, onEdit, onMenuAction }) {
           <button
             style={{ padding: '2px 6px', fontSize: 16, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)', borderRadius: 4 }}
             onClick={() => setMenuOpen(o => !o)}
-          >⋿</button>
+          ><svg viewBox="0 0 16 4" fill="currentColor" width="16" height="4"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="14" cy="2" r="1.5"/></svg></button>
           {menuOpen && (
             <div className="dropdown-menu open" style={{ right: 0, left: 'auto', minWidth: 170 }}>
               <div className="dropdown-item" onClick={() => { onMenuAction(task.id, 'inprogress'); setMenuOpen(false) }}>
@@ -75,12 +78,20 @@ export default function Dashboard() {
   const { data, updateTask, showToast } = useApp()
   const navigate = useNavigate()
   const today = new Date(); today.setHours(0,0,0,0)
+  const sevenDaysAgo = new Date(today); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
   const [editTask, setEditTask] = useState(null)
 
-  const tasks      = data.tasks
-  const inProgress = tasks.filter(t => t.status === 'inprogress').length
-  const done       = tasks.filter(t => t.status === 'done').length
-  const overdue    = tasks.filter(t => t.due && new Date(t.due) < today && t.status !== 'done').length
+  const tasks = data.tasks
+  const owner = data.assignees.find(a => a.isOwner)
+  const ownerName = owner?.name || 'Owner'
+
+  // Stat counts
+  const inboxCount      = tasks.filter(t => t.status === 'todo' && t.active !== false).length
+  const todoCount       = tasks.filter(t => t.status === 'inprogress' && !t.roadmap && !!owner && (t.assigneeIds||[]).includes(owner.id) && t.active !== false).length
+  const waitingCount    = tasks.filter(t => t.status === 'inprogress' && !t.roadmap && (!owner || !(t.assigneeIds||[]).includes(owner.id)) && (t.assigneeIds||[]).length > 0 && t.active !== false).length
+  const roadmapCount    = tasks.filter(t => t.status === 'inprogress' && t.roadmap && t.active !== false).length
+  const unassignedCount = tasks.filter(t => t.status === 'inprogress' && !t.roadmap && (t.assigneeIds||[]).length === 0 && t.active !== false).length
+  const completedCount  = tasks.filter(t => t.status === 'done' && t.createdAt && new Date(t.createdAt) >= sevenDaysAgo).length
 
   // Newest first, show top 8
   const recent = [...tasks]
@@ -109,32 +120,50 @@ export default function Dashboard() {
         </button>
       </div>
       <div className="page-content">
-        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 14, marginBottom: 22 }}>
-          <div className="stat-card stat-card-blue">
-            <div className="stat-label">TOTAL TASKS</div>
-            <div className="stat-value">{tasks.length}</div>
-            <div className="stat-sub">Across {data.projects.length} projects</div>
+        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10, marginBottom: 22 }}>
+
+          {/* 1 — Inbox */}
+          <div className="stat-card stat-card-clickable" onClick={() => navigate('/tasks?tab=inbox')} style={{ borderLeft: '4px solid #6366f1' }}>
+            <div className="stat-label">INBOX</div>
+            <div className="stat-value" style={{ color: '#6366f1' }}>{inboxCount}</div>
+            <div className="stat-sub">New tasks to process</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">IN PROGRESS</div>
-            <div className="stat-value" style={{ color: '#3b82f6' }}>{inProgress}</div>
-            <div className="stat-sub">Active tasks</div>
+
+          {/* 2 — To Dos for Owner */}
+          <div className="stat-card stat-card-clickable" onClick={() => navigate('/tasks?tab=todo')} style={{ borderLeft: '4px solid #3b82f6' }}>
+            <div className="stat-label">TO DOs FOR {ownerName.toUpperCase()}</div>
+            <div className="stat-value" style={{ color: '#3b82f6' }}>{todoCount}</div>
+            <div className="stat-sub">Assigned to you</div>
           </div>
-          <div className="stat-card">
+
+          {/* 3 — Waiting for Someone */}
+          <div className="stat-card stat-card-clickable" onClick={() => navigate('/tasks?tab=waiting')} style={{ borderLeft: '4px solid #f59e0b' }}>
+            <div className="stat-label">WAITING FOR SOMEONE</div>
+            <div className="stat-value" style={{ color: '#f59e0b' }}>{waitingCount}</div>
+            <div className="stat-sub">Delegated to others</div>
+          </div>
+
+          {/* 4 — Roadmap */}
+          <div className="stat-card stat-card-clickable" onClick={() => navigate('/tasks?tab=roadmap')} style={{ borderLeft: '4px solid #10b981' }}>
+            <div className="stat-label">ROADMAP</div>
+            <div className="stat-value" style={{ color: '#10b981' }}>{roadmapCount}</div>
+            <div className="stat-sub">Planned ahead</div>
+          </div>
+
+          {/* 5 — Unassigned */}
+          <div className="stat-card" style={{ borderLeft: '4px solid #94a3b8' }}>
+            <div className="stat-label">UNASSIGNED</div>
+            <div className="stat-value" style={{ color: '#64748b' }}>{unassignedCount}</div>
+            <div className="stat-sub">Need an owner</div>
+          </div>
+
+          {/* 6 — Completed last 7 days */}
+          <div className="stat-card" style={{ borderLeft: '4px solid #10b981' }}>
             <div className="stat-label">COMPLETED</div>
-            <div className="stat-value" style={{ color: '#10b981' }}>{done}</div>
-            <div className="stat-sub">Done tasks</div>
+            <div className="stat-value" style={{ color: '#10b981' }}>{completedCount}</div>
+            <div className="stat-sub">Last 7 days</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">OVERDUE</div>
-            <div className="stat-value" style={{ color: '#ef4444' }}>{overdue}</div>
-            <div className="stat-sub">Need attention</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">ASSIGNEES</div>
-            <div className="stat-value">{data.assignees.length}</div>
-            <div className="stat-sub">Team members</div>
-          </div>
+
         </div>
 
         <div className="card" style={{ padding: '18px 22px' }}>

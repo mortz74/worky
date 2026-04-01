@@ -135,7 +135,7 @@ function AssigneeForm({ form, set, photoPreview, existingPhotoUrl, onPhotoChange
 }
 
 export default function Assignees() {
-  const { data, createAssignee, updateAssignee, showToast, user } = useApp()
+  const { data, createAssignee, updateAssignee, setOwnerAssignee, showToast, user } = useApp()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
@@ -240,15 +240,36 @@ export default function Assignees() {
             const tasks = data.tasks.filter(t => t.assigneeId === a.id)
             const open = tasks.filter(t => t.status !== 'done').length
             return (
-              <div key={a.id} className="card" style={{ padding: 20, cursor: 'pointer', position: 'relative' }}
+              <div key={a.id} className="card" style={{ padding: 20, cursor: 'pointer', position: 'relative', outline: a.isOwner ? '2px solid #f59e0b' : 'none' }}
                 onClick={() => navigate(`/assignees/${a.id}`)}>
-                <button
-                  onClick={e => openEdit(e, a)}
-                  style={{ position: 'absolute', top: 10, right: 10, background: 'var(--slate-100)', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer', color: 'var(--slate-500)', fontWeight: 600 }}
-                  title="Edit assignee">
-                  ✏️ Edit
-                </button>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
+
+                {/* Owner crown badge */}
+                {a.isOwner && (
+                  <div style={{ position: 'absolute', top: 10, left: 10, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <svg viewBox="0 0 20 16" fill="#f59e0b" width="13" height="11"><path d="M1 14h18v2H1v-2zm1-2L3 4l4 4 3-6 3 6 4-4 1 8H2z"/></svg>
+                    Owner
+                  </div>
+                )}
+
+                {/* Edit + Set as Owner buttons */}
+                <div style={{ position: 'absolute', top: 10, right: 10, display: 'flex', gap: 4 }}>
+                  {!a.isOwner && (
+                    <button
+                      onClick={async e => { e.stopPropagation(); await setOwnerAssignee(a.id); showToast(`${a.name} set as Owner`, 'success') }}
+                      style={{ background: 'var(--slate-100)', border: 'none', borderRadius: 6, padding: '4px 7px', fontSize: 11, cursor: 'pointer', color: 'var(--slate-500)', fontWeight: 600 }}
+                      title="Set as Owner">
+                      <svg viewBox="0 0 20 16" fill="currentColor" width="12" height="10"><path d="M1 14h18v2H1v-2zm1-2L3 4l4 4 3-6 3 6 4-4 1 8H2z"/></svg>
+                    </button>
+                  )}
+                  <button
+                    onClick={e => openEdit(e, a)}
+                    style={{ background: 'var(--slate-100)', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer', color: 'var(--slate-500)', fontWeight: 600 }}
+                    title="Edit assignee">
+                    ✏️ Edit
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, marginTop: a.isOwner ? 28 : 0 }}>
                   <Avatar assignee={a} size={48} />
                   <div style={{ minWidth: 0, paddingRight: 56 }}>
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</div>

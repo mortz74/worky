@@ -1,5 +1,5 @@
 const STATUS = {
-  todo:       ['badge-todo',       'To Do'],
+  todo:       ['badge-todo',       'Inbox'],
   inprogress: ['badge-inprogress', 'In Progress'],
   review:     ['badge-review',     'In Review'],
   done:       ['badge-done',       'Done'],
