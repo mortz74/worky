@@ -5,7 +5,7 @@ const AppContext = createContext(null)
 
 // ── DB → local mappers ────────────────────────────────────────
 const mapOwner    = r => ({ id: r.id, name: r.name, email: r.email, role: r.role || 'Owner', color: r.color || '#2563eb', initials: r.initials || r.name.slice(0,2).toUpperCase() })
-const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false })
+const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', notesUrl: r.notes_url || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false })
 const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '' })
 
 // Tasks now carry assigneeIds[] and projectIds[] from the junction tables.
@@ -73,8 +73,9 @@ const toLocalAssignee = u => {
   if ('notes'     in u) m.notes    = u.notes
   if ('color'     in u) m.color    = u.color
   if ('initials'  in u) m.initials = u.initials
-  if ('photo_url' in u) m.photoUrl = u.photo_url
-  if ('is_owner'  in u) m.isOwner  = u.is_owner
+  if ('photo_url'  in u) m.photoUrl  = u.photo_url
+  if ('notes_url'  in u) m.notesUrl  = u.notes_url
+  if ('is_owner'   in u) m.isOwner   = u.is_owner
   return m
 }
 
@@ -242,6 +243,90 @@ export function AppProvider({ children }) {
     return mapAssignee(res)
   }, [showToast])
 
+  // ── File mutations ────────────────────────────────────────
+  const junctionTable = type =>
+    type === 'assignee' ? 'assignee_files'
+    : type === 'project' ? 'project_files'
+    : 'task_files'
+
+  const junctionFk = type =>
+    type === 'assignee' ? 'assignee_id'
+    : type === 'project' ? 'project_id'
+    : 'task_id'
+
+  const fetchFilesForAssignee = useCallback(async (assigneeId) => {
+    const { data: rows, error } = await sb
+      .from('assignee_files')
+      .select('file_id, files(*)')
+      .eq('assignee_id', assigneeId)
+      .eq('user_id', user.id)
+    if (error) { showToast(error.message, 'error'); return [] }
+    return (rows || []).map(r => r.files).filter(Boolean)
+  }, [user, showToast])
+
+  const fetchFilesForProject = useCallback(async (projectId) => {
+    const { data: rows, error } = await sb
+      .from('project_files')
+      .select('file_id, files(*)')
+      .eq('project_id', projectId)
+      .eq('user_id', user.id)
+    if (error) { showToast(error.message, 'error'); return [] }
+    return (rows || []).map(r => r.files).filter(Boolean)
+  }, [user, showToast])
+
+  const fetchFilesForTask = useCallback(async (taskId) => {
+    const { data: rows, error } = await sb
+      .from('task_files')
+      .select('file_id, files(*)')
+      .eq('task_id', taskId)
+      .eq('user_id', user.id)
+    if (error) { showToast(error.message, 'error'); return [] }
+    return (rows || []).map(r => r.files).filter(Boolean)
+  }, [user, showToast])
+
+  const addFileToEntity = useCallback(async (type, entityId, fileData) => {
+    // 1. Create the file record
+    const { data: file, error: fileErr } = await sb
+      .from('files')
+      .insert({ ...fileData, user_id: user.id })
+      .select()
+      .single()
+    if (fileErr) { showToast(fileErr.message, 'error'); return null }
+
+    // 2. Create the junction record
+    const table = junctionTable(type)
+    const fk    = junctionFk(type)
+    const { error: jErr } = await sb
+      .from(table)
+      .insert({ [fk]: entityId, file_id: file.id, user_id: user.id })
+    if (jErr) { showToast(jErr.message, 'error'); return null }
+
+    return file
+  }, [user, showToast])
+
+  const removeFileFromEntity = useCallback(async (type, entityId, fileId) => {
+    const table = junctionTable(type)
+    const fk    = junctionFk(type)
+    const { error } = await sb
+      .from(table)
+      .delete()
+      .eq(fk, entityId)
+      .eq('file_id', fileId)
+      .eq('user_id', user.id)
+    if (error) { showToast(error.message, 'error'); return false }
+    return true
+  }, [user, showToast])
+
+  const setFileArchived = useCallback(async (fileId, archived) => {
+    const { error } = await sb
+      .from('files')
+      .update({ archived })
+      .eq('id', fileId)
+      .eq('user_id', user.id)
+    if (error) { showToast(error.message, 'error'); return false }
+    return true
+  }, [user, showToast])
+
   // Sets one assignee as the owner; clears is_owner on all others for this user
   const setOwnerAssignee = useCallback(async (assigneeId) => {
     // Clear existing owner(s) first
@@ -263,6 +348,8 @@ export function AppProvider({ children }) {
       updateTask, createTask, deleteTask,
       updateProject, createProject,
       updateAssignee, createAssignee, setOwnerAssignee,
+      fetchFilesForAssignee, fetchFilesForProject, fetchFilesForTask,
+      addFileToEntity, removeFileFromEntity, setFileArchived,
       showToast, toast,
     }}>
       {children}

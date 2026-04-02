@@ -1,14 +1,35 @@
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../contexts/AppContext'
 import StatusBadge from '../components/StatusBadge'
 import Avatar from '../components/Avatar'
+import FileList from '../components/FileList'
+import AddFileModal from '../components/AddFileModal'
 
 const fmt = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 
 export default function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data } = useApp()
+  const { data, fetchFilesForProject, addFileToEntity, removeFileFromEntity, setFileArchived } = useApp()
+  const [files, setFiles]             = useState([])
+  const [showAddFile, setShowAddFile] = useState(false)
+
+  const loadFiles = useCallback(async () => {
+    const result = await fetchFilesForProject(id)
+    setFiles(result)
+  }, [id, fetchFilesForProject])
+
+  useEffect(() => { loadFiles() }, [loadFiles])
+
+  const handleAddFile    = async (fileData) => {
+    const file = await addFileToEntity('project', id, fileData)
+    if (file) { setShowAddFile(false); loadFiles() }
+  }
+  const handleRemoveFile  = async (fileId) => { await removeFileFromEntity('project', id, fileId); loadFiles() }
+  const handleArchiveFile = async (fileId) => { await setFileArchived(fileId, true);  loadFiles() }
+  const handleUnarchive   = async (fileId) => { await setFileArchived(fileId, false); loadFiles() }
+
   const p = data.projects.find(p => p.id === id)
   if (!p) return <div className="page active"><div className="page-content" style={{ padding: 40, textAlign: 'center', color: 'var(--slate-400)' }}>Project not found.</div></div>
   const tasks = data.tasks.filter(t => (t.projectIds || []).includes(id))
@@ -67,6 +88,20 @@ export default function ProjectDetail() {
                 </tbody>
               </table>
             </div>
+
+            {/* Files section */}
+            <FileList
+              files={files}
+              onAdd={() => setShowAddFile(true)}
+              onDelete={handleRemoveFile}
+              onArchive={handleArchiveFile}
+              onUnarchive={handleUnarchive}
+            />
+            <AddFileModal
+              open={showAddFile}
+              onClose={() => setShowAddFile(false)}
+              onSave={handleAddFile}
+            />
           </div>
           <div className="card" style={{ padding: 18, height: 'fit-content' }}>
             <div className="section-title">Details</div>

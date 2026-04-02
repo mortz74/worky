@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../contexts/AppContext'
 import EditTaskModal from '../components/EditTaskModal'
 import Avatar from '../components/Avatar'
 import MultiSelect from '../components/MultiSelect'
+import FileList from '../components/FileList'
+import AddFileModal from '../components/AddFileModal'
 
 const fmt = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 const isOverdue = d => d && new Date(d) < new Date()
@@ -11,9 +13,27 @@ const isOverdue = d => d && new Date(d) < new Date()
 export default function TaskDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data, updateTask, showToast } = useApp()
+  const { data, updateTask, showToast, fetchFilesForTask, addFileToEntity, removeFileFromEntity, setFileArchived } = useApp()
   const t = data.tasks.find(t => t.id === id)
-  const [showEdit, setShowEdit] = useState(false)
+  const [showEdit, setShowEdit]       = useState(false)
+  const [files, setFiles]             = useState([])
+  const [showAddFile, setShowAddFile] = useState(false)
+
+  const loadFiles = useCallback(async () => {
+    if (!id) return
+    const result = await fetchFilesForTask(id)
+    setFiles(result)
+  }, [id, fetchFilesForTask])
+
+  useEffect(() => { loadFiles() }, [loadFiles])
+
+  const handleAddFile    = async (fileData) => {
+    const file = await addFileToEntity('task', id, fileData)
+    if (file) { setShowAddFile(false); loadFiles() }
+  }
+  const handleRemoveFile  = async (fileId) => { await removeFileFromEntity('task', id, fileId); loadFiles() }
+  const handleArchiveFile = async (fileId) => { await setFileArchived(fileId, true);  loadFiles() }
+  const handleUnarchive   = async (fileId) => { await setFileArchived(fileId, false); loadFiles() }
 
   if (!t) return <div className="page active"><div className="page-content" style={{ padding: 40, textAlign: 'center', color: 'var(--slate-400)' }}>Task not found.</div></div>
 
@@ -53,16 +73,18 @@ export default function TaskDetail() {
               </div>
             </div>
 
-            <div className="card" style={{ padding: 22 }}>
-              <div className="section-title">📎 Attachments</div>
-              <div className="attach-zone">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 28, height: 28, color: 'var(--slate-300)', margin: '0 auto 6px', display: 'block' }}>
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-                </svg>
-                <div style={{ fontSize: 13, color: 'var(--slate-400)' }}>Click to attach files</div>
-              </div>
-              {(t.files || []).length === 0 && <div style={{ fontSize: 12.5, color: 'var(--slate-400)', marginTop: 8 }}>No files attached.</div>}
-            </div>
+            <FileList
+              files={files}
+              onAdd={() => setShowAddFile(true)}
+              onDelete={handleRemoveFile}
+              onArchive={handleArchiveFile}
+              onUnarchive={handleUnarchive}
+            />
+            <AddFileModal
+              open={showAddFile}
+              onClose={() => setShowAddFile(false)}
+              onSave={handleAddFile}
+            />
           </div>
 
           {/* Right: inline-editable details */}

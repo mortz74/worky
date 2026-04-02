@@ -114,6 +114,10 @@ function AssigneeForm({ form, set, photoPreview, existingPhotoUrl, onPhotoChange
         <label className="form-label">Notes</label>
         <textarea className="form-textarea" value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} />
       </div>
+      <div className="form-group">
+        <label className="form-label">Notes Link</label>
+        <input className="form-input" type="url" value={form.notesUrl} onChange={e => set('notesUrl', e.target.value)} placeholder="https://docs.google.com/…" />
+      </div>
 
       {/* Colour picker — used as fallback when no photo */}
       {!photoPreview && !existingPhotoUrl && (
@@ -140,7 +144,7 @@ export default function Assignees() {
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [editTarget, setEditTarget] = useState(null)
-  const [form, setForm] = useState({ name: '', email: '', dept: '', notes: '', color: COLORS[0] })
+  const [form, setForm] = useState({ name: '', email: '', dept: '', notes: '', notesUrl: '', color: COLORS[0] })
   const [photoFile, setPhotoFile] = useState(null)      // File object to upload
   const [photoPreview, setPhotoPreview] = useState('')  // object URL for preview
   const [removePhoto, setRemovePhoto] = useState(false) // flag to clear existing photo
@@ -160,7 +164,7 @@ export default function Assignees() {
   const handleRemovePhoto = () => { resetPhoto(); setRemovePhoto(true) }
 
   const openAdd = () => {
-    setForm({ name: '', email: '', dept: '', notes: '', color: COLORS[data.assignees.length % COLORS.length] })
+    setForm({ name: '', email: '', dept: '', notes: '', notesUrl: '', color: COLORS[data.assignees.length % COLORS.length] })
     resetPhoto()
     setShowAdd(true)
   }
@@ -168,7 +172,7 @@ export default function Assignees() {
   const openEdit = (e, assignee) => {
     e.stopPropagation()
     setEditTarget(assignee)
-    setForm({ name: assignee.name, email: assignee.email || '', dept: assignee.dept || '', notes: assignee.notes || '', color: assignee.color || COLORS[0] })
+    setForm({ name: assignee.name, email: assignee.email || '', dept: assignee.dept || '', notes: assignee.notes || '', notesUrl: assignee.notesUrl || '', color: assignee.color || COLORS[0] })
     resetPhoto()
   }
 
@@ -185,6 +189,7 @@ export default function Assignees() {
       email: form.email,
       dept: form.dept,
       notes: form.notes,
+      notes_url: form.notesUrl.trim() || null,
       color: form.color,
       initials: getInitials(form.name),
       photo_url: photoUrl,
@@ -209,6 +214,7 @@ export default function Assignees() {
       email: form.email,
       dept: form.dept,
       notes: form.notes,
+      notes_url: form.notesUrl.trim() || null,
       color: form.color,
       initials: getInitials(form.name),
       photo_url: photoUrl,
@@ -282,6 +288,20 @@ export default function Assignees() {
                   <span><strong>{open}</strong> open</span>
                   <span><strong>{tasks.length - open}</strong> done</span>
                 </div>
+                {a.notesUrl && (
+                  <a
+                    href={a.notesUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 10, fontSize: 12, color: 'var(--blue-600)', textDecoration: 'none', fontWeight: 600 }}
+                    onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                    onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    Notes
+                  </a>
+                )}
               </div>
             )
           })}
