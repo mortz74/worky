@@ -214,15 +214,26 @@ function AddTaskModal({ open, onClose }) {
   const [form, setForm] = useState({
     name: '', desc: '', projectIds: [], assigneeIds: [],
     ownerId: '', status: 'todo', start: '', due: '',
-    tags: '', roadmap: false, active: true,
+    tags: '', roadmap: false, active: true, domain: '',
   })
   const [saving, setSaving] = useState(false)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // Derive inherited domain from first selected project
+  const inheritedDomain = form.projectIds.length > 0
+    ? (data.projects.find(p => p.id === form.projectIds[0])?.domain || '')
+    : null
+
+  const handleProjectChange = (ids) => {
+    const inherited = ids.length > 0 ? (data.projects.find(p => p.id === ids[0])?.domain || '') : ''
+    setForm(f => ({ ...f, projectIds: ids, domain: inherited || f.domain }))
+  }
+
   const handleSave = async () => {
     if (!form.name.trim()) { showToast('Task name is required', 'error'); return }
     setSaving(true)
+    const effectiveDomain = inheritedDomain !== null ? inheritedDomain : form.domain
     const row = {
       user_id: user.id,
       name: form.name.trim(),
@@ -236,6 +247,7 @@ function AddTaskModal({ open, onClose }) {
       active: form.status === 'done' ? false : form.active,
       assignee_ids: form.assigneeIds,
       project_ids: form.projectIds,
+      domain: effectiveDomain || null,
     }
     const task = await createTask(row)
     setSaving(false)
@@ -259,12 +271,24 @@ function AddTaskModal({ open, onClose }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div className="form-group">
           <label className="form-label">Projects</label>
-          <MultiSelect options={projectOptions} value={form.projectIds} onChange={ids => set('projectIds', ids)} placeholder="— None —" />
+          <MultiSelect options={projectOptions} value={form.projectIds} onChange={handleProjectChange} placeholder="— None —" />
         </div>
         <div className="form-group">
           <label className="form-label">Assignees</label>
           <MultiSelect options={assigneeOptions} value={form.assigneeIds} onChange={ids => set('assigneeIds', ids)} placeholder="— Unassigned —" />
         </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Domain</label>
+        {inheritedDomain !== null
+          ? <div style={{ fontSize: 13, color: 'var(--slate-500)', padding: '8px 10px', background: 'var(--slate-50)', borderRadius: 6, border: '1px solid var(--slate-200)' }}>
+              🔗 Inherited: <strong>{inheritedDomain || '—'}</strong>
+            </div>
+          : <select className="form-select" value={form.domain} onChange={e => set('domain', e.target.value)}>
+              <option value="">— No domain —</option>
+              {data.domains.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+            </select>
+        }
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
         <div className="form-group">
@@ -308,6 +332,7 @@ export default function Tasks() {
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'inbox')
   const [search, setSearch]     = useState('')
   const [projectF, setProjectF] = useState('')
+  const [domainF, setDomainF]   = useState('')
   const [activeF, setActiveF]   = useState('active')
   // All Jobs tab only
   const [statusF, setStatusF]   = useState('')
@@ -331,6 +356,7 @@ export default function Tasks() {
   useEffect(() => {
     setSearch('')
     setProjectF('')
+    setDomainF('')
     setActiveF('active')
     setStatusF('')
     setAssigneeF('')
@@ -342,39 +368,40 @@ export default function Tasks() {
 
   // ── Tab-level filter logic ─────────────────────────────────
   const filterByTab = (t) => {
-    const matchSearch = !search || t.name.toLowerCase().includes(search.toLowerCase())
+    const matchSearch  = !search   || t.name.toLowerCase().includes(search.toLowerCase())
     const matchProject = !projectF || (t.projectIds || []).includes(projectF)
-    const matchActive =
+    const matchDomain  = !domainF  || t.domain === domainF
+    const matchActive  =
       activeF === 'active' ? t.active !== false
       : activeF === 'closed' ? t.active === false
       : true
 
     switch (activeTab) {
       case 'inbox':
-        return t.status === 'todo' && t.active !== false && matchSearch
+        return t.status === 'todo' && t.active !== false && matchSearch && matchDomain
 
       case 'todo':
         return t.status === 'inprogress'
           && !t.roadmap
           && !!owner && (t.assigneeIds || []).includes(owner.id)
-          && matchProject && matchActive && matchSearch
+          && matchProject && matchActive && matchSearch && matchDomain
 
       case 'waiting':
         return t.status === 'inprogress'
           && !t.roadmap
           && (!owner || !(t.assigneeIds || []).includes(owner.id))
-          && matchProject && matchActive && matchSearch
+          && matchProject && matchActive && matchSearch && matchDomain
 
       case 'roadmap':
         return t.status === 'inprogress'
           && t.roadmap
-          && matchProject && matchActive && matchSearch
+          && matchProject && matchActive && matchSearch && matchDomain
 
       case 'all': {
         const matchStatus   = !statusF   || t.status === statusF
         const matchAssignee = !assigneeF || (t.assigneeIds || []).includes(assigneeF)
         const matchRoadmap  = roadmapF === 'yes' ? t.roadmap : roadmapF === 'no' ? !t.roadmap : true
-        return matchStatus && matchProject && matchAssignee && matchActive && matchRoadmap && matchSearch
+        return matchStatus && matchProject && matchAssignee && matchActive && matchRoadmap && matchSearch && matchDomain
       }
 
       default: return true
@@ -533,6 +560,12 @@ export default function Tasks() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input className="search-input" placeholder="Search tasks…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
+
+          {/* Domain filter — all tabs */}
+          <select className="filter-select" value={domainF} onChange={e => setDomainF(e.target.value)}>
+            <option value="">All Domains</option>
+            {data.domains.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+          </select>
 
           {/* Project filter — tabs 2, 3, 4, all */}
           {activeTab !== 'inbox' && (

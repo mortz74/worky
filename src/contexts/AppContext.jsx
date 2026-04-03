@@ -6,7 +6,8 @@ const AppContext = createContext(null)
 // ── DB → local mappers ────────────────────────────────────────
 const mapOwner    = r => ({ id: r.id, name: r.name, email: r.email, role: r.role || 'Owner', color: r.color || '#2563eb', initials: r.initials || r.name.slice(0,2).toUpperCase() })
 const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', notesUrl: r.notes_url || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false })
-const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '' })
+const mapDomain   = r => ({ id: r.id, name: r.name })
+const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '', projectType: r.project_type || 'project', domain: r.domain || '' })
 
 // Tasks now carry assigneeIds[] and projectIds[] from the junction tables.
 // assigneeId / projectId are kept as the first element for backward-compat display.
@@ -32,6 +33,7 @@ const mapTask = r => {
     roadmap: r.roadmap || false,
     active:  r.status === 'done' ? false : r.active !== false,
     files:   r.files || [],
+    domain:  r.domain || '',
   }
 }
 
@@ -47,6 +49,7 @@ const toLocalTask = u => {
   if ('tags'        in u) m.tags      = u.tags
   if ('roadmap'     in u) m.roadmap   = u.roadmap
   if ('active'      in u) m.active    = u.active
+  if ('domain'      in u) m.domain    = u.domain
   if (m.status === 'done') m.active = false
   return m
 }
@@ -59,9 +62,11 @@ const toLocalProject = u => {
   if ('start_date'  in u) m.start    = u.start_date
   if ('due_date'    in u) m.due      = u.due_date
   if ('end_date'    in u) m.end      = u.end_date
-  if ('tags'        in u) m.tags     = u.tags
-  if ('emoji'       in u) m.emoji    = u.emoji
-  if ('photo_url'   in u) m.photoUrl = u.photo_url
+  if ('tags'         in u) m.tags        = u.tags
+  if ('emoji'        in u) m.emoji       = u.emoji
+  if ('photo_url'    in u) m.photoUrl    = u.photo_url
+  if ('project_type' in u) m.projectType = u.project_type
+  if ('domain'       in u) m.domain      = u.domain
   return m
 }
 
@@ -82,7 +87,7 @@ const toLocalAssignee = u => {
 export function AppProvider({ children }) {
   const [user, setUser]       = useState(null)
   const [authReady, setAuthReady] = useState(false)
-  const [data, setData]       = useState({ owners: [], assignees: [], projects: [], tasks: [] })
+  const [data, setData]       = useState({ owners: [], assignees: [], projects: [], tasks: [], domains: [] })
   const [toast, setToast]     = useState(null)
 
   const showToast = useCallback((msg, type = 'success') => {
@@ -92,21 +97,34 @@ export function AppProvider({ children }) {
 
   // ── Data loading ──────────────────────────────────────────
   const loadData = useCallback(async (uid) => {
-    const [owners, assignees, projects, tasks] = await Promise.all([
+    const [owners, assignees, projects, tasks, domainsRes] = await Promise.all([
       sb.from('owners').select('*').eq('user_id', uid).order('created_at'),
       sb.from('assignees').select('*').eq('user_id', uid).order('name'),
       sb.from('projects').select('*').eq('user_id', uid).order('created_at'),
-      // Join junction tables so each task carries its full assigneeIds/projectIds
       sb.from('tasks')
         .select('*, task_assignees(assignee_id), task_projects(project_id)')
         .eq('user_id', uid)
         .order('created_at'),
+      sb.from('domains').select('*').eq('user_id', uid).order('created_at'),
     ])
+
+    // Auto-seed Work / Personal if this user has no domains yet
+    let domainRows = domainsRes.data || []
+    if (domainRows.length === 0) {
+      await sb.from('domains').insert([
+        { user_id: uid, name: 'Work' },
+        { user_id: uid, name: 'Personal' },
+      ])
+      const { data: seeded } = await sb.from('domains').select('*').eq('user_id', uid).order('created_at')
+      domainRows = seeded || []
+    }
+
     setData({
       owners:    (owners.data    || []).map(mapOwner),
       assignees: (assignees.data || []).map(mapAssignee),
       projects:  (projects.data  || []).map(mapProject),
       tasks:     (tasks.data     || []).map(mapTask),
+      domains:   domainRows.map(mapDomain),
     })
   }, [])
 
@@ -120,7 +138,7 @@ export function AppProvider({ children }) {
     const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       if (session?.user) loadData(session.user.id)
-      else setData({ owners: [], assignees: [], projects: [], tasks: [] })
+      else setData({ owners: [], assignees: [], projects: [], tasks: [], domains: [] })
     })
     return () => subscription.unsubscribe()
   }, [loadData])
@@ -327,6 +345,22 @@ export function AppProvider({ children }) {
     return true
   }, [user, showToast])
 
+  // ── Domain mutations ──────────────────────────────────────
+  const createDomain = useCallback(async (name) => {
+    const { data: res, error } = await sb.from('domains').insert({ name: name.trim(), user_id: user.id }).select().single()
+    if (error) { showToast(error.message, 'error'); return null }
+    const d = mapDomain(res)
+    setData(s => ({ ...s, domains: [...s.domains, d] }))
+    return d
+  }, [user, showToast])
+
+  const deleteDomain = useCallback(async (domainId) => {
+    const { error } = await sb.from('domains').delete().eq('id', domainId).eq('user_id', user.id)
+    if (error) { showToast(error.message, 'error'); return false }
+    setData(s => ({ ...s, domains: s.domains.filter(d => d.id !== domainId) }))
+    return true
+  }, [user, showToast])
+
   // Sets one assignee as the owner; clears is_owner on all others for this user
   const setOwnerAssignee = useCallback(async (assigneeId) => {
     // Clear existing owner(s) first
@@ -350,6 +384,7 @@ export function AppProvider({ children }) {
       updateAssignee, createAssignee, setOwnerAssignee,
       fetchFilesForAssignee, fetchFilesForProject, fetchFilesForTask,
       addFileToEntity, removeFileFromEntity, setFileArchived,
+      createDomain, deleteDomain,
       showToast, toast,
     }}>
       {children}

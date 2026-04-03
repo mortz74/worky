@@ -139,7 +139,7 @@ function AssigneeForm({ form, set, photoPreview, existingPhotoUrl, onPhotoChange
 }
 
 export default function Assignees() {
-  const { data, createAssignee, updateAssignee, setOwnerAssignee, showToast, user } = useApp()
+  const { data, createAssignee, updateAssignee, showToast, user } = useApp()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
@@ -257,16 +257,8 @@ export default function Assignees() {
                   </div>
                 )}
 
-                {/* Edit + Set as Owner buttons */}
-                <div style={{ position: 'absolute', top: 10, right: 10, display: 'flex', gap: 4 }}>
-                  {!a.isOwner && (
-                    <button
-                      onClick={async e => { e.stopPropagation(); await setOwnerAssignee(a.id); showToast(`${a.name} set as Owner`, 'success') }}
-                      style={{ background: 'var(--slate-100)', border: 'none', borderRadius: 6, padding: '4px 7px', fontSize: 11, cursor: 'pointer', color: 'var(--slate-500)', fontWeight: 600 }}
-                      title="Set as Owner">
-                      <svg viewBox="0 0 20 16" fill="currentColor" width="12" height="10"><path d="M1 14h18v2H1v-2zm1-2L3 4l4 4 3-6 3 6 4-4 1 8H2z"/></svg>
-                    </button>
-                  )}
+                {/* Edit button */}
+                <div style={{ position: 'absolute', top: 10, right: 10 }}>
                   <button
                     onClick={e => openEdit(e, a)}
                     style={{ background: 'var(--slate-100)', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer', color: 'var(--slate-500)', fontWeight: 600 }}

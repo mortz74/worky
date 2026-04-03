@@ -157,6 +157,15 @@ export default function TaskDetail() {
                   <TagsInput key={t.id + (t.tags||[]).join()} initialTags={t.tags || []} onSave={tags => save({ tags }, 'Tags saved')} />
                 </div>
 
+                {t.domain && (
+                  <div>
+                    <div className="form-label" style={{ marginBottom: 4 }}>Domain</div>
+                    <span style={{ fontSize: 12, background: 'var(--slate-100)', color: 'var(--slate-600)', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>
+                      🏷 {t.domain}
+                    </span>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
                     <input type="checkbox" checked={t.roadmap} onChange={e => save({ roadmap: e.target.checked }, `Roadmap ${e.target.checked ? 'enabled' : 'disabled'}`)} />

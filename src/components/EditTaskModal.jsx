@@ -16,13 +16,25 @@ export default function EditTaskModal({ task: t, open, onClose, onSave }) {
     due: t.due || '',
     tags: (t.tags || []).join(', '),
     roadmap: t.roadmap,
+    domain: t.domain || '',
   })
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // Derive inherited domain from first selected project
+  const inheritedDomain = form.projectIds.length > 0
+    ? (data.projects.find(p => p.id === form.projectIds[0])?.domain || '')
+    : null
+
+  const handleProjectChange = (ids) => {
+    const inherited = ids.length > 0 ? (data.projects.find(p => p.id === ids[0])?.domain || '') : ''
+    setForm(f => ({ ...f, projectIds: ids, domain: inherited || f.domain }))
+  }
+
   const handleSave = async () => {
     if (!form.name.trim()) return
     setSaving(true)
+    const effectiveDomain = inheritedDomain !== null ? inheritedDomain : form.domain
     const ok = await onSave({
       name: form.name.trim(),
       description: form.desc,
@@ -34,6 +46,7 @@ export default function EditTaskModal({ task: t, open, onClose, onSave }) {
       due_date: form.due || null,
       tags: form.tags.split(',').map(s => s.trim()).filter(Boolean),
       roadmap: form.roadmap,
+      domain: effectiveDomain || null,
       ...(form.status === 'done' ? { active: false } : {}),
     }, 'Task updated!')
     setSaving(false)
@@ -65,7 +78,7 @@ export default function EditTaskModal({ task: t, open, onClose, onSave }) {
           <MultiSelect
             options={projectOptions}
             value={form.projectIds}
-            onChange={ids => set('projectIds', ids)}
+            onChange={handleProjectChange}
             placeholder="— None —"
           />
         </div>
@@ -78,6 +91,18 @@ export default function EditTaskModal({ task: t, open, onClose, onSave }) {
             placeholder="— Unassigned —"
           />
         </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Domain</label>
+        {inheritedDomain !== null
+          ? <div style={{ fontSize: 13, color: 'var(--slate-500)', padding: '8px 10px', background: 'var(--slate-50)', borderRadius: 6, border: '1px solid var(--slate-200)' }}>
+              🔗 Inherited: <strong>{inheritedDomain || '—'}</strong>
+            </div>
+          : <select className="form-select" value={form.domain} onChange={e => set('domain', e.target.value)}>
+              <option value="">— No domain —</option>
+              {data.domains.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+            </select>
+        }
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
         <div className="form-group">
