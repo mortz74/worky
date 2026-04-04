@@ -12,6 +12,7 @@ import ProjectDetail from './pages/ProjectDetail'
 import Assignees from './pages/Assignees'
 import AssigneeDetail from './pages/AssigneeDetail'
 import Settings from './pages/Settings'
+import Files from './pages/Files'
 
 function AppShell() {
   const { user, loading, toast } = useApp()
@@ -42,6 +43,7 @@ function AppShell() {
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/assignees" element={<Assignees />} />
           <Route path="/assignees/:id" element={<AssigneeDetail />} />
+          <Route path="/files" element={<Files />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
