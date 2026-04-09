@@ -6,6 +6,7 @@ import Avatar from '../components/Avatar'
 import Modal from '../components/Modal'
 import MultiSelect from '../components/MultiSelect'
 import EditTaskModal from '../components/EditTaskModal'
+import QuickTaskModal from '../components/QuickTaskModal'
 
 const fmt = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 const isOverdue = d => d && new Date(d) < new Date()
@@ -49,6 +50,7 @@ function TaskRow({ task, selected, onToggleSelect, columns, menuItems }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
 
+  const hasReminder = data.reminders.some(r => r.entityType === 'task' && r.entityId === task.id)
   const projects = (task.projectIds || []).map(pid => data.projects.find(p => p.id === pid)).filter(Boolean)
   const projectLabel = projects.length === 0 ? '—'
     : projects.length === 1 ? `${projects[0].emoji} ${projects[0].name}`
@@ -70,6 +72,7 @@ function TaskRow({ task, selected, onToggleSelect, columns, menuItems }) {
       </td>
       <td style={{ fontWeight: 600, cursor: 'pointer', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => navigate(`/tasks/${task.id}`)}>
         {task.name}
+        {hasReminder && <span title="Has reminder" style={{ marginLeft: 6, fontSize: 12 }}>🔔</span>}
       </td>
       {columns.includes('project') && (
         <td><span style={{ fontSize: 12 }}>{projectLabel}</span></td>
@@ -191,6 +194,52 @@ function AddDueDateModal({ task, open, onClose, onSave }) {
   )
 }
 
+// ── Add Reminder Modal ─────────────────────────────────────
+function AddReminderModal({ task, open, onClose, onSave }) {
+  const [remindAt, setRemindAt]     = useState('')
+  const [recurrence, setRecurrence] = useState('none')
+  const [notes, setNotes]           = useState('')
+
+  useEffect(() => {
+    if (open) { setRemindAt(''); setRecurrence('none'); setNotes('') }
+  }, [open])
+
+  const toDatetimeLocal = () => {
+    const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0)
+    const pad = n => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Add Reminder — ${task?.name || ''}`}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => onSave({ remindAt, recurrence, notes })}>Set Reminder</button>
+        </>
+      }>
+      <div className="form-group">
+        <label className="form-label">Date &amp; Time</label>
+        <input className="form-input" type="datetime-local" value={remindAt || toDatetimeLocal()}
+          onChange={e => setRemindAt(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Recurrence</label>
+        <select className="form-select" value={recurrence} onChange={e => setRecurrence(e.target.value)}>
+          <option value="none">One-time</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Notes (optional)</label>
+        <input className="form-input" placeholder="e.g. Follow up on status" value={notes} onChange={e => setNotes(e.target.value)} />
+      </div>
+    </Modal>
+  )
+}
+
 // ── Delete Confirm Modal ───────────────────────────────────
 function DeleteConfirmModal({ task, open, onClose, onConfirm }) {
   return (
@@ -210,13 +259,25 @@ function DeleteConfirmModal({ task, open, onClose, onConfirm }) {
 
 // ── Add Task Modal ─────────────────────────────────────────
 function AddTaskModal({ open, onClose }) {
-  const { data, createTask, showToast, user } = useApp()
+  const { data, createTask, createReminder, showToast, user } = useApp()
   const [form, setForm] = useState({
     name: '', desc: '', projectIds: [], assigneeIds: [],
-    ownerId: '', status: 'todo', start: '', due: '',
+    ownerId: '', status: 'inprogress', start: '', due: '',
     tags: '', roadmap: false, active: true, domain: '',
   })
   const [saving, setSaving] = useState(false)
+  const [reminderEnabled, setReminderEnabled] = useState(false)
+  const [reminder, setReminder] = useState({ remindAt: '', recurrence: 'none', notes: '' })
+
+  const BLANK = { name: '', desc: '', projectIds: [], assigneeIds: [], ownerId: '', status: 'inprogress', start: '', due: '', tags: '', roadmap: false, active: true, domain: '' }
+
+  useEffect(() => {
+    if (open) {
+      setForm(BLANK)
+      setReminderEnabled(false)
+      setReminder({ remindAt: '', recurrence: 'none', notes: '' })
+    }
+  }, [open])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -250,6 +311,9 @@ function AddTaskModal({ open, onClose }) {
       domain: effectiveDomain || null,
     }
     const task = await createTask(row)
+    if (task && reminderEnabled && reminder.remindAt) {
+      await createReminder({ entityType: 'task', entityId: task.id, remindAt: new Date(reminder.remindAt).toISOString(), recurrence: reminder.recurrence, notes: reminder.notes })
+    }
     setSaving(false)
     if (task) { showToast('Task created!', 'success'); onClose() }
   }
@@ -320,13 +384,44 @@ function AddTaskModal({ open, onClose }) {
           <input type="checkbox" checked={form.active} disabled={form.status === 'done'} onChange={e => set('active', e.target.checked)} /> Active
         </label>
       </div>
+
+      {/* Reminder */}
+      <div style={{ marginTop: 18, borderTop: '1px solid var(--slate-100)', paddingTop: 16 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+          <input type="checkbox" checked={reminderEnabled} onChange={e => setReminderEnabled(e.target.checked)} style={{ accentColor: 'var(--blue-500)', width: 15, height: 15 }} />
+          <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--slate-700)' }}>🔔 Add a Reminder</span>
+        </label>
+        {reminderEnabled && (
+          <div style={{ marginTop: 12 }}>
+            <div className="form-row" style={{ marginBottom: 12 }}>
+              <div>
+                <div className="form-label" style={{ marginBottom: 4 }}>Date &amp; Time *</div>
+                <input type="datetime-local" className="form-input" style={{ fontSize: 13 }} value={reminder.remindAt} onChange={e => setReminder(r => ({ ...r, remindAt: e.target.value }))} />
+              </div>
+              <div>
+                <div className="form-label" style={{ marginBottom: 4 }}>Recurrence</div>
+                <select className="form-select" style={{ fontSize: 13 }} value={reminder.recurrence} onChange={e => setReminder(r => ({ ...r, recurrence: e.target.value }))}>
+                  <option value="none">One-time</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <div className="form-label" style={{ marginBottom: 4 }}>Notes (optional)</div>
+              <input className="form-input" style={{ fontSize: 13 }} placeholder="e.g. Check for updates" value={reminder.notes} onChange={e => setReminder(r => ({ ...r, notes: e.target.value }))} />
+            </div>
+          </div>
+        )}
+      </div>
     </Modal>
   )
 }
 
 // ── Main Tasks Page ────────────────────────────────────────
 export default function Tasks() {
-  const { data, updateTask, deleteTask, showToast } = useApp()
+  const { data, updateTask, deleteTask, createReminder, showToast } = useApp()
   const [searchParams] = useSearchParams()
 
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'inbox')
@@ -339,11 +434,15 @@ export default function Tasks() {
   const [assigneeF, setAssigneeF] = useState('')
   const [roadmapF, setRoadmapF] = useState('')
 
-  const [selected, setSelected] = useState(new Set())
-  const [showAdd, setShowAdd]   = useState(false)
+  const [selected, setSelected]   = useState(new Set())
+  const [showAdd, setShowAdd]     = useState(false)
+  const [showQuick, setShowQuick] = useState(false)
+  const [splitOpen, setSplitOpen] = useState(false)
+  const splitRef                   = useRef(null)
   const [editTask, setEditTask] = useState(null)
   const [addAssigneeTask, setAddAssigneeTask] = useState(null)
-  const [addDueDateTask, setAddDueDateTask]   = useState(null)
+  const [addDueDateTask, setAddDueDateTask]     = useState(null)
+  const [addReminderTask, setAddReminderTask]   = useState(null)
   const [deleteTaskItem, setDeleteTaskItem]   = useState(null)
 
   useEffect(() => {
@@ -351,6 +450,12 @@ export default function Tasks() {
     const tab = searchParams.get('tab')
     if (tab) setActiveTab(tab)
   }, [searchParams])
+
+  useEffect(() => {
+    const handler = e => { if (splitRef.current && !splitRef.current.contains(e.target)) setSplitOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   // Reset per-tab filters when switching tabs
   useEffect(() => {
@@ -468,6 +573,8 @@ export default function Tasks() {
       { icon: '👑', label: `Assign to ${ownerName}`, action: () => assignToOwner(task) },
       { icon: '👤', label: 'Add Assignee', action: () => setAddAssigneeTask(task) },
       { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
+      { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },
+      { divider: true },
       { icon: '🗺', label: 'Add to Roadmap', action: () => { updateTask(task.id, { roadmap: true }); showToast('Added to Roadmap', 'success') } },
       { divider: true },
       { icon: '✏️', label: 'Edit', action: () => setEditTask(task) },
@@ -476,8 +583,11 @@ export default function Tasks() {
 
     if (activeTab === 'todo' || activeTab === 'waiting') return [
       { icon: '✅', label: 'Mark Done', action: () => { updateTask(task.id, { status: 'done', active: false }); showToast('Marked Done', 'success') } },
+      { divider: true },
       { icon: '👤', label: 'Add / Change Assignee', action: () => setAddAssigneeTask(task) },
       { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
+      { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },
+      { divider: true },
       { icon: '🗺', label: 'Add to Roadmap', action: () => { updateTask(task.id, { roadmap: true }); showToast('Added to Roadmap', 'success') } },
       { divider: true },
       { icon: '✏️', label: 'Edit', action: () => setEditTask(task) },
@@ -486,7 +596,11 @@ export default function Tasks() {
 
     if (activeTab === 'roadmap') return [
       { icon: '✅', label: 'Mark Done', action: () => { updateTask(task.id, { status: 'done', active: false }); showToast('Marked Done', 'success') } },
+      { divider: true },
       { icon: '👤', label: 'Add / Change Assignee', action: () => setAddAssigneeTask(task) },
+      { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
+      { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },
+      { divider: true },
       { icon: '↩️', label: 'Remove from Roadmap', action: () => { updateTask(task.id, { roadmap: false }); showToast('Removed from Roadmap', 'success') } },
       { divider: true },
       { icon: '✏️', label: 'Edit', action: () => setEditTask(task) },
@@ -497,8 +611,11 @@ export default function Tasks() {
     return [
       { icon: '▶️', label: 'Mark In Progress', action: () => { updateTask(task.id, { status: 'inprogress' }); showToast('Marked In Progress', 'success') } },
       { icon: '✅', label: 'Mark Done', action: () => { updateTask(task.id, { status: 'done', active: false }); showToast('Marked Done', 'success') } },
+      { divider: true },
       { icon: '👤', label: 'Add / Change Assignee', action: () => setAddAssigneeTask(task) },
       { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
+      { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },
+      { divider: true },
       { icon: '🗺', label: task.roadmap ? 'Remove from Roadmap' : 'Add to Roadmap', action: () => { updateTask(task.id, { roadmap: !task.roadmap }); showToast(`Roadmap ${!task.roadmap ? 'enabled' : 'disabled'}`, 'success') } },
       { divider: true },
       { icon: '✏️', label: 'Edit', action: () => setEditTask(task) },
@@ -533,10 +650,23 @@ export default function Tasks() {
     <div className="page active">
       <div className="page-header">
         <span className="page-title">Tasks</span>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Task
-        </button>
+        <div className="split-btn" ref={splitRef}>
+          <button className="split-btn-main" onClick={() => setShowQuick(true)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Quick Task
+          </button>
+          <button className="split-btn-arrow" onClick={() => setSplitOpen(o => !o)} title="More options">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          {splitOpen && (
+            <div className="split-btn-dropdown">
+              <div className="dropdown-item" onClick={() => { setShowAdd(true); setSplitOpen(false) }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14" style={{ marginRight: 7 }}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New Task (full form)
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="page-content">
@@ -627,7 +757,7 @@ export default function Tasks() {
           {filtered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: 'var(--slate-400)', fontSize: 13 }}>{emptyMsg()}</div>
           ) : (
-            <table className="task-table">
+            <div className="table-scroll"><table className="task-table">
               <thead>
                 <tr>
                   <th style={{ width: 32 }}>
@@ -648,12 +778,13 @@ export default function Tasks() {
                   />
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </div>
 
       {/* ── Modals ── */}
+      <QuickTaskModal open={showQuick} onClose={() => setShowQuick(false)} />
       <AddTaskModal open={showAdd} onClose={() => setShowAdd(false)} />
 
       {editTask && (
@@ -682,6 +813,18 @@ export default function Tasks() {
         open={!!addDueDateTask}
         onClose={() => setAddDueDateTask(null)}
         onSave={(due) => handleDueDateSave(addDueDateTask, due)}
+      />
+
+      <AddReminderModal
+        task={addReminderTask}
+        open={!!addReminderTask}
+        onClose={() => setAddReminderTask(null)}
+        onSave={async ({ remindAt, recurrence, notes }) => {
+          if (!remindAt) { showToast('Please pick a date and time', 'error'); return }
+          await createReminder({ entityType: 'task', entityId: addReminderTask.id, remindAt: new Date(remindAt).toISOString(), recurrence, notes })
+          showToast('Reminder set', 'success')
+          setAddReminderTask(null)
+        }}
       />
 
       <DeleteConfirmModal

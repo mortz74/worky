@@ -10,10 +10,30 @@ const LinkIcon = () => (
 
 // Archive icon SVG
 const ArchiveIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
     <polyline points="21 8 21 21 3 21 3 8"/>
     <rect x="1" y="3" width="22" height="5"/>
     <line x1="10" y1="12" x2="14" y2="12"/>
+  </svg>
+)
+
+// Unarchive (restore) icon SVG
+const UnarchiveIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+    <polyline points="21 8 21 21 3 21 3 8"/>
+    <rect x="1" y="3" width="22" height="5"/>
+    <polyline points="10 14 12 12 14 14"/>
+    <line x1="12" y1="12" x2="12" y2="17"/>
+  </svg>
+)
+
+// Trash icon SVG
+const TrashIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+    <polyline points="3 6 5 6 21 6"/>
+    <path d="M19 6l-1 14H6L5 6"/>
+    <path d="M10 11v6M14 11v6"/>
+    <path d="M9 6V4h6v2"/>
   </svg>
 )
 
@@ -115,47 +135,36 @@ export default function FileList({ files = [], onAdd, onDelete, onArchive, onUna
 
                 {/* Actions */}
                 <td style={{ padding: '10px 18px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-                    {/* Open */}
-                    <a
-                      href={file.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-secondary"
-                      style={{ fontSize: 11, padding: '3px 10px', textDecoration: 'none', display: 'inline-block' }}
-                    >
-                      Open
-                    </a>
-
-                    {/* Archive / Unarchive */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'flex-end' }}>
+                    {/* Archive / Unarchive icon button */}
                     {file.archived ? (
                       <button
-                        className="btn btn-secondary"
-                        style={{ fontSize: 11, padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                        className="btn btn-icon"
+                        style={{ padding: '5px 7px', color: 'var(--slate-400)', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 6, display: 'flex', alignItems: 'center' }}
                         onClick={() => onUnarchive(file.id)}
                         title="Unarchive"
                       >
-                        <ArchiveIcon /> Unarchive
+                        <UnarchiveIcon />
                       </button>
                     ) : (
                       <button
-                        className="btn btn-secondary"
-                        style={{ fontSize: 11, padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                        className="btn btn-icon"
+                        style={{ padding: '5px 7px', color: 'var(--slate-400)', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 6, display: 'flex', alignItems: 'center' }}
                         onClick={() => onArchive(file.id)}
                         title="Archive"
                       >
-                        <ArchiveIcon /> Archive
+                        <ArchiveIcon />
                       </button>
                     )}
 
-                    {/* Remove (unlink from entity) */}
+                    {/* Remove — trash icon */}
                     <button
-                      className="btn btn-secondary"
-                      style={{ fontSize: 11, padding: '3px 10px', color: '#ef4444', borderColor: '#fecaca' }}
+                      className="btn btn-icon"
+                      style={{ padding: '5px 7px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 6, display: 'flex', alignItems: 'center' }}
                       onClick={() => onDelete(file.id)}
-                      title="Remove from this page"
+                      title="Remove"
                     >
-                      Remove
+                      <TrashIcon />
                     </button>
                   </div>
                 </td>

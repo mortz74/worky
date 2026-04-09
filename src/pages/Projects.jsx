@@ -339,6 +339,7 @@ export default function Projects() {
 
 function ProjectCard({ project: p, onOpen, onEdit, onToggle }) {
   const { data } = useApp()
+  const hasReminder = data.reminders.some(r => r.entityType === 'project' && r.entityId === p.id)
   const tasks = data.tasks.filter(t => (t.projectIds || []).includes(p.id))
   const done  = tasks.filter(t => t.status === 'done').length
   const pct   = tasks.length ? Math.round(done / tasks.length * 100) : 0
@@ -376,7 +377,7 @@ function ProjectCard({ project: p, onOpen, onEdit, onToggle }) {
       {/* Card body */}
       <div style={{ padding: '14px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}{hasReminder && <span title="Has reminder" style={{ marginLeft: 6, fontSize: 12 }}>🔔</span>}</div>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             {p.domain && <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--blue-50)', color: 'var(--blue-600)', padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', letterSpacing: '.04em' }}>{p.domain}</span>}
             <span className={`badge ${p.status === 'active' ? 'badge-active' : 'badge-archive'} badge-dot`}>{p.status === 'active' ? 'Active' : 'Archived'}</span>

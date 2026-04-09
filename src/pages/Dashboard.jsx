@@ -4,6 +4,7 @@ import { useApp } from '../contexts/AppContext'
 import StatusBadge from '../components/StatusBadge'
 import Avatar from '../components/Avatar'
 import EditTaskModal from '../components/EditTaskModal'
+import QuickTaskModal from '../components/QuickTaskModal'
 
 const fmt = d => { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 const isOverdue = d => d && new Date(d) < new Date()
@@ -79,7 +80,16 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const today = new Date(); today.setHours(0,0,0,0)
   const sevenDaysAgo = new Date(today); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-  const [editTask, setEditTask] = useState(null)
+  const [editTask, setEditTask]   = useState(null)
+  const [showQuick, setShowQuick] = useState(false)
+  const [splitOpen, setSplitOpen] = useState(false)
+  const splitRef = useRef(null)
+
+  useEffect(() => {
+    const handler = e => { if (splitRef.current && !splitRef.current.contains(e.target)) setSplitOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const tasks = data.tasks
   const owner = data.assignees.find(a => a.isOwner)
@@ -114,13 +124,26 @@ export default function Dashboard() {
     <div className="page active" id="page-dashboard">
       <div className="page-header">
         <span className="page-title">Dashboard</span>
-        <button className="btn btn-primary" onClick={() => navigate('/tasks?new=1')}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Task
-        </button>
+        <div className="split-btn" ref={splitRef}>
+          <button className="split-btn-main" onClick={() => setShowQuick(true)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Quick Task
+          </button>
+          <button className="split-btn-arrow" onClick={() => setSplitOpen(o => !o)} title="More options">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          {splitOpen && (
+            <div className="split-btn-dropdown">
+              <div className="dropdown-item" onClick={() => { navigate('/tasks?new=1'); setSplitOpen(false) }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14" style={{ marginRight: 7 }}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New Task (full form)
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <div className="page-content">
-        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10, marginBottom: 22 }}>
+        <div className="stats-grid">
 
           {/* 1 — Inbox */}
           <div className="stat-card stat-card-clickable" onClick={() => navigate('/tasks?tab=inbox')} style={{ borderLeft: '4px solid #6366f1' }}>
@@ -174,7 +197,7 @@ export default function Dashboard() {
           {recent.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '28px 0', color: 'var(--slate-400)', fontSize: 13 }}>No tasks yet. Create your first task!</div>
           ) : (
-            <table className="task-table">
+            <div className="table-scroll"><table className="task-table">
               <thead>
                 <tr><th>TASK</th><th>PROJECT</th><th>ASSIGNEE</th><th>STATUS</th><th>DUE</th><th></th></tr>
               </thead>
@@ -188,11 +211,12 @@ export default function Dashboard() {
                   />
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </div>
 
+      <QuickTaskModal open={showQuick} onClose={() => setShowQuick(false)} />
       {editTask && (
         <EditTaskModal
           key={editTask.id}

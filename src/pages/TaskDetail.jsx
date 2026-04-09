@@ -6,6 +6,7 @@ import Avatar from '../components/Avatar'
 import MultiSelect from '../components/MultiSelect'
 import FileList from '../components/FileList'
 import AddFileModal from '../components/AddFileModal'
+import ReminderSection from '../components/ReminderSection'
 
 const fmt = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 const isOverdue = d => d && new Date(d) < new Date()
@@ -56,7 +57,7 @@ export default function TaskDetail() {
         <button className="btn btn-secondary" onClick={() => navigate(-1)}>← Back</button>
       </div>
       <div className="page-content">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20, alignItems: 'start' }}>
+        <div className="detail-grid">
 
           {/* Left: description + files */}
           <div>
@@ -72,6 +73,8 @@ export default function TaskDetail() {
                 {(t.tags || []).map(tag => <span key={tag} className="tag">{tag}</span>)}
               </div>
             </div>
+
+            <ReminderSection entityType="task" entityId={id} singleOnly={true} />
 
             <FileList
               files={files}
