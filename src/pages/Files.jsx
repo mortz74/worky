@@ -573,7 +573,7 @@ export default function Files() {
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button className="btn btn-secondary" onClick={() => setConfirmDeleteId(null)}>Cancel</button>
-              <button className="btn" style={{ background: 'var(--red-500)', color: '#fff', border: 'none' }} onClick={handleDelete}>Delete</button>
+              <button className="btn" style={{ background: '#ef4444', color: '#fff', border: 'none' }} onClick={handleDelete}>Delete</button>
             </div>
           </div>
         </div>

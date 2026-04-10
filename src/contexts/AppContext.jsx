@@ -201,6 +201,8 @@ export function AppProvider({ children }) {
 
   const createTask = useCallback(async (row) => {
     const { assignee_ids = [], project_ids = [], ...taskRow } = row
+    // Rule: if task is created with assignees, promote status from Inbox → In Progress
+    if (assignee_ids.length > 0 && taskRow.status === 'todo') taskRow.status = 'inprogress'
     const { data: res, error } = await sb.from('tasks').insert(taskRow).select().single()
     if (error) { showToast(error.message, 'error'); return null }
 

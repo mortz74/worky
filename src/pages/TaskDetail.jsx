@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../contexts/AppContext'
-import EditTaskModal from '../components/EditTaskModal'
 import Avatar from '../components/Avatar'
 import MultiSelect from '../components/MultiSelect'
 import FileList from '../components/FileList'
@@ -16,9 +15,11 @@ export default function TaskDetail() {
   const navigate = useNavigate()
   const { data, updateTask, showToast, fetchFilesForTask, addFileToEntity, removeFileFromEntity, setFileArchived } = useApp()
   const t = data.tasks.find(t => t.id === id)
-  const [showEdit, setShowEdit]       = useState(false)
   const [files, setFiles]             = useState([])
   const [showAddFile, setShowAddFile] = useState(false)
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [descDraft, setDescDraft]     = useState('')
+  const descRef = useRef(null)
 
   const loadFiles = useCallback(async () => {
     if (!id) return
@@ -53,7 +54,6 @@ export default function TaskDetail() {
     <div className="page active">
       <div className="page-header">
         <span className="page-title" style={{ fontSize: 15 }}>{t.name}</span>
-        <button className="btn btn-primary" onClick={() => setShowEdit(true)}>✏️ Edit Task</button>
         <button className="btn btn-secondary" onClick={() => navigate(-1)}>← Back</button>
       </div>
       <div className="page-content">
@@ -62,13 +62,62 @@ export default function TaskDetail() {
           {/* Left: description + files */}
           <div>
             <div className="card" style={{ padding: 22, marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
                 <div style={{ flex: 1 }}>
                   <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--slate-900)', marginBottom: 6 }}>{t.name}</h2>
-                  <p style={{ color: 'var(--slate-500)', fontSize: 13.5, lineHeight: 1.6 }}>{t.desc || 'No description.'}</p>
+                  {t.domain && (
+                    <span style={{ display: 'inline-block', fontSize: 12, background: 'var(--slate-100)', color: 'var(--slate-600)', padding: '2px 10px', borderRadius: 20, fontWeight: 600, marginBottom: 10 }}>
+                      🏷 {t.domain}
+                    </span>
+                  )}
                 </div>
                 {t.roadmap && <span className="roadmap-flag">🗺 Roadmap</span>}
               </div>
+
+              {/* Description with inline edit */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <span className="form-label" style={{ margin: 0 }}>Description</span>
+                  {!editingDesc && (
+                    <button
+                      onClick={() => { setDescDraft(t.desc || ''); setEditingDesc(true); setTimeout(() => descRef.current?.focus(), 0) }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)', padding: 2, display: 'flex', alignItems: 'center' }}
+                      title="Edit description"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {editingDesc ? (
+                  <div>
+                    <textarea
+                      ref={descRef}
+                      className="form-textarea"
+                      style={{ fontSize: 13.5, lineHeight: 1.6, width: '100%', minHeight: 90 }}
+                      value={descDraft}
+                      onChange={e => setDescDraft(e.target.value)}
+                    />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                      <button className="btn btn-primary" style={{ fontSize: 12, padding: '4px 12px' }}
+                        onClick={() => { save({ description: descDraft }, 'Description updated'); setEditingDesc(false) }}>
+                        Save
+                      </button>
+                      <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 12px' }}
+                        onClick={() => setEditingDesc(false)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ color: 'var(--slate-500)', fontSize: 13.5, lineHeight: 1.6, margin: 0 }}>
+                    {t.desc || <span style={{ fontStyle: 'italic' }}>No description. Click ✏ to add one.</span>}
+                  </p>
+                )}
+              </div>
+
               <div className="tags-wrap">
                 {(t.tags || []).map(tag => <span key={tag} className="tag">{tag}</span>)}
               </div>
@@ -129,29 +178,34 @@ export default function TaskDetail() {
 
                 <div>
                   <div className="form-label" style={{ marginBottom: 4 }}>Projects</div>
-                  {projects.length === 0
-                    ? <div style={{ fontSize: 13, color: 'var(--slate-400)' }}>—</div>
-                    : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {projects.map(p => (
-                          <span key={p.id} style={{
-                            fontSize: 12, background: 'var(--blue-50)', color: 'var(--blue-700)',
-                            padding: '3px 8px', borderRadius: 20, fontWeight: 600,
-                          }}>{p.emoji} {p.name}</span>
-                        ))}
-                      </div>
-                  }
+                  <MultiSelect
+                    options={data.projects.map(p => ({ id: p.id, label: p.name, prefix: p.emoji }))}
+                    value={t.projectIds || []}
+                    onChange={ids => save({ project_ids: ids }, 'Projects updated')}
+                    placeholder="— None —"
+                  />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div>
                     <div className="form-label" style={{ marginBottom: 4 }}>Start</div>
-                    <div style={{ fontSize: 13, color: 'var(--slate-600)' }}>{fmt(t.start)}</div>
+                    <input
+                      type="date"
+                      className="form-input"
+                      style={{ fontSize: 13, padding: '5px 8px' }}
+                      value={t.start ? new Date(t.start).toISOString().slice(0, 10) : ''}
+                      onChange={e => save({ start_date: e.target.value ? new Date(e.target.value).toISOString() : null }, 'Start date updated')}
+                    />
                   </div>
                   <div>
                     <div className="form-label" style={{ marginBottom: 4 }}>Due</div>
-                    <div style={{ fontSize: 13, color: isOverdue(t.due) && t.status !== 'done' ? '#ef4444' : 'var(--slate-600)', fontWeight: isOverdue(t.due) && t.status !== 'done' ? 700 : 400 }}>
-                      {fmt(t.due)}
-                    </div>
+                    <input
+                      type="date"
+                      className="form-input"
+                      style={{ fontSize: 13, padding: '5px 8px', color: isOverdue(t.due) && t.status !== 'done' ? '#ef4444' : undefined, fontWeight: isOverdue(t.due) && t.status !== 'done' ? 700 : undefined }}
+                      value={t.due ? new Date(t.due).toISOString().slice(0, 10) : ''}
+                      onChange={e => save({ due_date: e.target.value ? new Date(e.target.value).toISOString() : null }, 'Due date updated')}
+                    />
                   </div>
                 </div>
 
@@ -159,15 +213,6 @@ export default function TaskDetail() {
                   <div className="form-label" style={{ marginBottom: 4 }}>Tags</div>
                   <TagsInput key={t.id + (t.tags||[]).join()} initialTags={t.tags || []} onSave={tags => save({ tags }, 'Tags saved')} />
                 </div>
-
-                {t.domain && (
-                  <div>
-                    <div className="form-label" style={{ marginBottom: 4 }}>Domain</div>
-                    <span style={{ fontSize: 12, background: 'var(--slate-100)', color: 'var(--slate-600)', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>
-                      🏷 {t.domain}
-                    </span>
-                  </div>
-                )}
 
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
@@ -185,7 +230,6 @@ export default function TaskDetail() {
         </div>
       </div>
 
-      <EditTaskModal key={t.id} task={t} open={showEdit} onClose={() => setShowEdit(false)} onSave={save} />
     </div>
   )
 }

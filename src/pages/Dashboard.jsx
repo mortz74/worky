@@ -16,9 +16,6 @@ function DashboardTaskRow({ task, onEdit, onMenuAction }) {
   const menuRef = useRef(null)
 
   const projs = (task.projectIds || []).map(pid => data.projects.find(p => p.id === pid)).filter(Boolean)
-  const projLabel = projs.length === 0 ? '—'
-    : projs.length === 1 ? `${projs[0].emoji} ${projs[0].name}`
-    : `${projs[0].emoji} ${projs[0].name} +${projs.length - 1}`
 
   const firstAssignee = data.assignees.find(a => a.id === (task.assigneeIds || [])[0])
   const moreAssignees = (task.assigneeIds || []).length - 1
@@ -32,7 +29,22 @@ function DashboardTaskRow({ task, onEdit, onMenuAction }) {
   return (
     <tr>
       <td style={{ fontWeight: 600, color: 'var(--slate-800)', cursor: 'pointer' }} onClick={() => navigate(`/tasks/${task.id}`)}>{task.name}</td>
-      <td><span style={{ fontSize: 12 }}>{projLabel}</span></td>
+      <td onClick={e => e.stopPropagation()}>
+        {projs.length === 0
+          ? <span style={{ fontSize: 12, color: 'var(--slate-400)' }}>—</span>
+          : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {projs.map(p => (
+                <span
+                  key={p.id}
+                  onClick={() => navigate(`/projects/${p.id}`)}
+                  style={{ fontSize: 11, background: 'var(--blue-50)', color: 'var(--blue-700)', padding: '2px 8px', borderRadius: 20, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  {p.emoji} {p.name}
+                </span>
+              ))}
+            </div>
+        }
+      </td>
       <td onClick={e => e.stopPropagation()}>
         {firstAssignee
           ? <div

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../contexts/AppContext'
 import StatusBadge from '../components/StatusBadge'
@@ -12,11 +13,12 @@ const fmt = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('
 const isOverdue = d => d && new Date(d) < new Date()
 
 const TABS = [
-  { key: 'inbox',   label: 'Inbox' },
-  { key: 'todo',    label: 'To Do' },
-  { key: 'waiting', label: 'Waiting for Someone' },
-  { key: 'roadmap', label: 'Roadmap' },
-  { key: 'all',     label: 'All Tasks' },
+  { key: 'inbox',      label: 'Inbox' },
+  { key: 'todo',       label: 'To Do' },
+  { key: 'waiting',    label: 'Waiting for Someone' },
+  { key: 'unassigned', label: 'Unassigned' },
+  { key: 'roadmap',    label: 'Roadmap' },
+  { key: 'all',        label: 'All Tasks' },
 ]
 
 // ── AvatarStack ────────────────────────────────────────────
@@ -48,22 +50,58 @@ function TaskRow({ task, selected, onToggleSelect, columns, menuItems }) {
   const { data } = useApp()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 })
   const menuRef = useRef(null)
+  const btnRef = useRef(null)
 
   const hasReminder = data.reminders.some(r => r.entityType === 'task' && r.entityId === task.id)
   const projects = (task.projectIds || []).map(pid => data.projects.find(p => p.id === pid)).filter(Boolean)
-  const projectLabel = projects.length === 0 ? '—'
-    : projects.length === 1 ? `${projects[0].emoji} ${projects[0].name}`
-    : `${projects[0].emoji} ${projects[0].name} +${projects.length - 1}`
 
   const assignees = (task.assigneeIds || []).map(aid => data.assignees.find(a => a.id === aid)).filter(Boolean)
   const assigneeNames = assignees.map(a => a.name).join(', ') || '—'
 
   useEffect(() => {
-    const handler = e => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false) }
+    const handler = e => {
+      if (menuRef.current && !menuRef.current.contains(e.target) &&
+          btnRef.current && !btnRef.current.contains(e.target)) {
+        setMenuOpen(false)
+      }
+    }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  const openMenu = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+    }
+    setMenuOpen(o => !o)
+  }
+
+  const menu = menuOpen && createPortal(
+    <div
+      ref={menuRef}
+      className="dropdown-menu open"
+      style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, left: 'auto', minWidth: 210, zIndex: 9999 }}
+    >
+      {menuItems.map((item, i) => {
+        if (item.divider) return <div key={`div-${i}`} className="dropdown-divider" />
+        return (
+          <div
+            key={i}
+            className="dropdown-item"
+            style={item.danger ? { color: '#ef4444' } : {}}
+            onClick={() => { item.action(); setMenuOpen(false) }}
+          >
+            {item.icon && <span style={{ marginRight: 6 }}>{item.icon}</span>}
+            {item.label}
+          </div>
+        )
+      })}
+    </div>,
+    document.body
+  )
 
   return (
     <tr className={selected ? 'selected' : ''}>
@@ -75,7 +113,22 @@ function TaskRow({ task, selected, onToggleSelect, columns, menuItems }) {
         {hasReminder && <span title="Has reminder" style={{ marginLeft: 6, fontSize: 12 }}>🔔</span>}
       </td>
       {columns.includes('project') && (
-        <td><span style={{ fontSize: 12 }}>{projectLabel}</span></td>
+        <td onClick={e => e.stopPropagation()}>
+          {projects.length === 0
+            ? <span style={{ fontSize: 12, color: 'var(--slate-400)' }}>—</span>
+            : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {projects.map(p => (
+                  <span
+                    key={p.id}
+                    onClick={() => navigate(`/projects/${p.id}`)}
+                    style={{ fontSize: 11, background: 'var(--blue-50)', color: 'var(--blue-700)', padding: '2px 8px', borderRadius: 20, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    {p.emoji} {p.name}
+                  </span>
+                ))}
+              </div>
+          }
+        </td>
       )}
       {columns.includes('assignees') && (
         <td onClick={e => e.stopPropagation()}>
@@ -102,35 +155,17 @@ function TaskRow({ task, selected, onToggleSelect, columns, menuItems }) {
         <td>{task.roadmap ? '🗺' : ''}</td>
       )}
       <td onClick={e => e.stopPropagation()}>
-        <div style={{ position: 'relative' }} ref={menuRef}>
-          <button
-            className="btn btn-icon"
-            style={{ padding: '2px 6px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)' }}
-            onClick={() => setMenuOpen(o => !o)}
-          >
-            <svg viewBox="0 0 16 4" fill="currentColor" width="16" height="4">
-              <circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="14" cy="2" r="1.5"/>
-            </svg>
-          </button>
-          {menuOpen && (
-            <div className="dropdown-menu open" style={{ right: 0, left: 'auto', minWidth: 210, zIndex: 1000 }}>
-              {menuItems.map((item, i) => {
-                if (item.divider) return <div key={`div-${i}`} className="dropdown-divider" />
-                return (
-                  <div
-                    key={i}
-                    className="dropdown-item"
-                    style={item.danger ? { color: '#ef4444' } : {}}
-                    onClick={() => { item.action(); setMenuOpen(false) }}
-                  >
-                    {item.icon && <span style={{ marginRight: 6 }}>{item.icon}</span>}
-                    {item.label}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        <button
+          ref={btnRef}
+          className="btn btn-icon"
+          style={{ padding: '2px 6px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)' }}
+          onClick={openMenu}
+        >
+          <svg viewBox="0 0 16 4" fill="currentColor" width="16" height="4">
+            <circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="14" cy="2" r="1.5"/>
+          </svg>
+        </button>
+        {menu}
       </td>
     </tr>
   )
@@ -497,6 +532,12 @@ export default function Tasks() {
           && (!owner || !(t.assigneeIds || []).includes(owner.id))
           && matchProject && matchActive && matchSearch && matchDomain
 
+      case 'unassigned':
+        return t.status !== 'done'
+          && !t.roadmap
+          && (t.assigneeIds || []).length === 0
+          && matchProject && matchActive && matchSearch && matchDomain
+
       case 'roadmap':
         return t.status === 'inprogress'
           && t.roadmap
@@ -520,8 +561,9 @@ export default function Tasks() {
     switch (tabKey) {
       case 'inbox':   return t.status === 'todo' && t.active !== false
       case 'todo':    return t.status === 'inprogress' && !t.roadmap && !!owner && (t.assigneeIds||[]).includes(owner.id) && t.active !== false
-      case 'waiting': return t.status === 'inprogress' && !t.roadmap && (!owner || !(t.assigneeIds||[]).includes(owner.id)) && t.active !== false
-      case 'roadmap': return t.status === 'inprogress' && t.roadmap && t.active !== false
+      case 'waiting':    return t.status === 'inprogress' && !t.roadmap && (!owner || !(t.assigneeIds||[]).includes(owner.id)) && t.active !== false
+      case 'unassigned': return t.status !== 'done' && !t.roadmap && (t.assigneeIds||[]).length === 0 && t.active !== false
+      case 'roadmap':    return t.status === 'inprogress' && t.roadmap && t.active !== false
       case 'all':     return true
       default:        return false
     }
@@ -529,11 +571,12 @@ export default function Tasks() {
 
   // ── Column definitions per tab ─────────────────────────────
   const TAB_COLUMNS = {
-    inbox:   ['project', 'assignees', 'due'],
-    todo:    ['project', 'due'],
-    waiting: ['project', 'assignees', 'due'],
-    roadmap: ['project', 'assignees', 'due'],
-    all:     ['project', 'assignees', 'status', 'due', 'roadmap'],
+    inbox:      ['project', 'assignees', 'due'],
+    todo:       ['project', 'due'],
+    waiting:    ['project', 'assignees', 'due'],
+    unassigned: ['project', 'status', 'due'],
+    roadmap:    ['project', 'assignees', 'due'],
+    all:        ['project', 'assignees', 'status', 'due', 'roadmap'],
   }
   const columns = TAB_COLUMNS[activeTab] || []
 
@@ -584,6 +627,20 @@ export default function Tasks() {
     if (activeTab === 'todo' || activeTab === 'waiting') return [
       { icon: '✅', label: 'Mark Done', action: () => { updateTask(task.id, { status: 'done', active: false }); showToast('Marked Done', 'success') } },
       { divider: true },
+      { icon: '👤', label: 'Add / Change Assignee', action: () => setAddAssigneeTask(task) },
+      { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
+      { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },
+      { divider: true },
+      { icon: '🗺', label: 'Add to Roadmap', action: () => { updateTask(task.id, { roadmap: true }); showToast('Added to Roadmap', 'success') } },
+      { divider: true },
+      { icon: '✏️', label: 'Edit', action: () => setEditTask(task) },
+      { icon: '🗑️', label: 'Delete', action: () => setDeleteTaskItem(task), danger: true },
+    ]
+
+    if (activeTab === 'unassigned') return [
+      { icon: '✅', label: 'Mark Done', action: () => { updateTask(task.id, { status: 'done', active: false }); showToast('Marked Done', 'success') } },
+      { divider: true },
+      ...(owner ? [{ icon: '🙋', label: `Assign to ${ownerName} & Move to To Do`, action: () => { updateTask(task.id, { status: 'inprogress', assignee_ids: [owner.id] }); showToast(`Assigned to ${ownerName}`, 'success') } }] : []),
       { icon: '👤', label: 'Add / Change Assignee', action: () => setAddAssigneeTask(task) },
       { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
       { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },

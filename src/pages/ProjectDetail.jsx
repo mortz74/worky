@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../contexts/AppContext'
 import StatusBadge from '../components/StatusBadge'
@@ -95,7 +95,7 @@ function DeleteConfirmModal({ task, open, onClose, onConfirm }) {
 export default function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data, updateTask, deleteTask, createReminder, showToast, fetchFilesForProject, addFileToEntity, removeFileFromEntity, setFileArchived } = useApp()
+  const { data, updateTask, updateProject, deleteTask, createReminder, showToast, fetchFilesForProject, addFileToEntity, removeFileFromEntity, setFileArchived } = useApp()
   const [activeTab, setActiveTab]     = useState('tasks')
   const [files, setFiles]             = useState([])
   const [showAddFile, setShowAddFile] = useState(false)
@@ -105,6 +105,9 @@ export default function ProjectDetail() {
   const [addDueDateTask, setAddDueDateTask] = useState(null)
   const [addReminderTask, setAddReminderTask] = useState(null)
   const [deleteTaskId, setDeleteTaskId] = useState(null)
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [descDraft, setDescDraft]     = useState('')
+  const descRef = useRef(null)
 
   const openTaskMenu = (e, taskId) => {
     const rect = e.currentTarget.getBoundingClientRect()
@@ -129,6 +132,13 @@ export default function ProjectDetail() {
 
   const p = data.projects.find(p => p.id === id)
   if (!p) return <div className="page active"><div className="page-content" style={{ padding: 40, textAlign: 'center', color: 'var(--slate-400)' }}>Project not found.</div></div>
+
+  const saveProject = async (updates, msg) => {
+    const ok = await updateProject(id, updates)
+    if (ok && msg) showToast(msg, 'success')
+    return ok
+  }
+
   const tasks = data.tasks.filter(t => (t.projectIds || []).includes(id))
   const done = tasks.filter(t => t.status === 'done').length
   const pct = tasks.length ? Math.round(done / tasks.length * 100) : 0
@@ -153,10 +163,6 @@ export default function ProjectDetail() {
     <div className="page active">
       <div className="page-header">
         <span className="page-title">{p.emoji} {p.name}</span>
-        <button className="btn btn-primary" onClick={() => setShowQuick(true)}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Quick Task
-        </button>
         <button className="btn btn-secondary" onClick={() => navigate('/projects')}>← Back</button>
       </div>
       <QuickTaskModal open={showQuick} onClose={() => setShowQuick(false)} defaultProjectIds={[id]} />
@@ -164,7 +170,59 @@ export default function ProjectDetail() {
         <div className="detail-grid">
           <div>
             <div className="card" style={{ padding: 22, marginBottom: 16 }}>
-              <p style={{ color: 'var(--slate-600)', fontSize: 13.5, lineHeight: 1.6, marginBottom: 14 }}>{p.desc || 'No description.'}</p>
+              {/* Name + domain */}
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--slate-900)', marginBottom: 6 }}>{p.emoji} {p.name}</h2>
+              {p.domain && (
+                <span style={{ display: 'inline-block', fontSize: 12, background: 'var(--slate-100)', color: 'var(--slate-600)', padding: '2px 10px', borderRadius: 20, fontWeight: 600, marginBottom: 10 }}>
+                  🏷 {p.domain}
+                </span>
+              )}
+
+              {/* Inline description */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <span className="form-label" style={{ margin: 0 }}>Description</span>
+                  {!editingDesc && (
+                    <button
+                      onClick={() => { setDescDraft(p.desc || ''); setEditingDesc(true); setTimeout(() => descRef.current?.focus(), 0) }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)', padding: 2, display: 'flex', alignItems: 'center' }}
+                      title="Edit description"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {editingDesc ? (
+                  <div>
+                    <textarea
+                      ref={descRef}
+                      className="form-textarea"
+                      style={{ fontSize: 13.5, lineHeight: 1.6, width: '100%', minHeight: 90 }}
+                      value={descDraft}
+                      onChange={e => setDescDraft(e.target.value)}
+                    />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                      <button className="btn btn-primary" style={{ fontSize: 12, padding: '4px 12px' }}
+                        onClick={() => { saveProject({ description: descDraft }, 'Description updated'); setEditingDesc(false) }}>
+                        Save
+                      </button>
+                      <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 12px' }}
+                        onClick={() => setEditingDesc(false)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ color: 'var(--slate-500)', fontSize: 13.5, lineHeight: 1.6, margin: 0 }}>
+                    {p.desc || <span style={{ fontStyle: 'italic' }}>No description. Click ✏ to add one.</span>}
+                  </p>
+                )}
+              </div>
+
+              {/* Progress bar */}
               <div style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--slate-500)', marginBottom: 6 }}>
                   <span>Progress</span><span>{done}/{tasks.length} tasks done</span>
@@ -176,13 +234,19 @@ export default function ProjectDetail() {
               {(p.tags || []).length > 0 && <div className="tags-wrap">{p.tags.map(tag => <span key={tag} className="tag">{tag}</span>)}</div>}
             </div>
             <div className="card" style={{ padding: 0, overflow: 'visible' }}>
-              <div className="page-tabs" style={{ margin: 0, padding: '0 18px', borderBottom: '2px solid var(--slate-200)' }}>
-                {TABS.map(tab => (
-                  <button key={tab.key} className={`page-tab${activeTab === tab.key ? ' active' : ''}`} onClick={() => setActiveTab(tab.key)}>
-                    {tab.label}
-                    <span className="page-tab-count">{tabCount(tab.key)}</span>
-                  </button>
-                ))}
+              <div className="page-tabs" style={{ margin: 0, padding: '0 18px', borderBottom: '2px solid var(--slate-200)', display: 'flex', alignItems: 'center' }}>
+                <div style={{ display: 'flex', flex: 1 }}>
+                  {TABS.map(tab => (
+                    <button key={tab.key} className={`page-tab${activeTab === tab.key ? ' active' : ''}`} onClick={() => setActiveTab(tab.key)}>
+                      {tab.label}
+                      <span className="page-tab-count">{tabCount(tab.key)}</span>
+                    </button>
+                  ))}
+                </div>
+                <button className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowQuick(true)}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Quick Task
+                </button>
               </div>
               <div className="table-scroll"><table className="task-table">
                 <thead><tr><th>Task</th><th>Assignee</th><th>Status</th><th>Due</th><th style={{ width: 40 }}></th></tr></thead>
@@ -243,11 +307,49 @@ export default function ProjectDetail() {
           </div>
           <div className="card" style={{ padding: 18, height: 'fit-content' }}>
             <div className="section-title">Details</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><div className="form-label" style={{ marginBottom: 4 }}>Status</div><StatusBadge status={p.status} /></div>
-              <div><div className="form-label" style={{ marginBottom: 4 }}>Start</div><div style={{ fontSize: 13 }}>{fmt(p.start)}</div></div>
-              <div><div className="form-label" style={{ marginBottom: 4 }}>Due</div><div style={{ fontSize: 13 }}>{fmt(p.due)}</div></div>
-              <div><div className="form-label" style={{ marginBottom: 4 }}>Tasks</div><div style={{ fontSize: 13 }}>{tasks.length} total · {done} done</div></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+              <div>
+                <div className="form-label" style={{ marginBottom: 4 }}>Status</div>
+                <select className="form-select" style={{ fontSize: 13 }}
+                  value={p.status || ''}
+                  onChange={e => saveProject({ status: e.target.value }, 'Status updated')}>
+                  <option value="active">Active</option>
+                  <option value="inprogress">In Progress</option>
+                  <option value="review">In Review</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="done">Done</option>
+                  <option value="archive">Archive</option>
+                </select>
+              </div>
+
+              <div>
+                <div className="form-label" style={{ marginBottom: 4 }}>Start</div>
+                <input
+                  type="date"
+                  className="form-input"
+                  style={{ fontSize: 13, padding: '5px 8px' }}
+                  value={p.start ? new Date(p.start).toISOString().slice(0, 10) : ''}
+                  onChange={e => saveProject({ start_date: e.target.value ? new Date(e.target.value).toISOString() : null }, 'Start date updated')}
+                />
+              </div>
+
+              <div>
+                <div className="form-label" style={{ marginBottom: 4 }}>Due</div>
+                <input
+                  type="date"
+                  className="form-input"
+                  style={{ fontSize: 13, padding: '5px 8px' }}
+                  value={p.due ? new Date(p.due).toISOString().slice(0, 10) : ''}
+                  onChange={e => saveProject({ due_date: e.target.value ? new Date(e.target.value).toISOString() : null }, 'Due date updated')}
+                />
+              </div>
+
+              <div>
+                <div className="form-label" style={{ marginBottom: 4 }}>Tasks</div>
+                <div style={{ fontSize: 13, color: 'var(--slate-600)' }}>{tasks.length} total · {done} done</div>
+              </div>
+
             </div>
           </div>
         </div>
