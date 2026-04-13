@@ -8,6 +8,9 @@ import Modal from '../components/Modal'
 import MultiSelect from '../components/MultiSelect'
 import EditTaskModal from '../components/EditTaskModal'
 import QuickTaskModal from '../components/QuickTaskModal'
+import AddAssigneeModal from '../components/AddAssigneeModal'
+import AddDueDateModal from '../components/AddDueDateModal'
+import AddReminderModal from '../components/AddReminderModal'
 
 const fmt = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 const isOverdue = d => d && new Date(d) < new Date()
@@ -171,109 +174,6 @@ function TaskRow({ task, selected, onToggleSelect, columns, menuItems }) {
   )
 }
 
-// ── Add Assignee Modal ─────────────────────────────────────
-function AddAssigneeModal({ task, open, onClose, onSave }) {
-  const { data } = useApp()
-  const [assigneeIds, setAssigneeIds] = useState([])
-
-  useEffect(() => {
-    if (task) setAssigneeIds(task.assigneeIds || [])
-  }, [task])
-
-  const options = data.assignees.map(a => ({ id: a.id, label: a.name }))
-
-  return (
-    <Modal open={open} onClose={onClose} title="Manage Assignees"
-      footer={
-        <>
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onSave(assigneeIds)}>Save</button>
-        </>
-      }>
-      <div className="form-group">
-        <label className="form-label">Assignees</label>
-        <MultiSelect options={options} value={assigneeIds} onChange={setAssigneeIds} placeholder="— Unassigned —" />
-      </div>
-    </Modal>
-  )
-}
-
-// ── Add Due Date Modal ─────────────────────────────────────
-function AddDueDateModal({ task, open, onClose, onSave }) {
-  const [due, setDue] = useState('')
-
-  useEffect(() => {
-    if (task) setDue(task.due ? task.due.slice(0, 10) : '')
-  }, [task])
-
-  return (
-    <Modal open={open} onClose={onClose} title="Set Due Date"
-      footer={
-        <>
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onSave(due || null)}>Save</button>
-        </>
-      }>
-      <div className="form-group">
-        <label className="form-label">Due Date</label>
-        <input className="form-input" type="date" value={due} onChange={e => setDue(e.target.value)} />
-      </div>
-      {due && (
-        <div style={{ marginTop: 8 }}>
-          <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--slate-400)', padding: '4px 0' }} onClick={() => setDue('')}>
-            Clear date
-          </button>
-        </div>
-      )}
-    </Modal>
-  )
-}
-
-// ── Add Reminder Modal ─────────────────────────────────────
-function AddReminderModal({ task, open, onClose, onSave }) {
-  const [remindAt, setRemindAt]     = useState('')
-  const [recurrence, setRecurrence] = useState('none')
-  const [notes, setNotes]           = useState('')
-
-  useEffect(() => {
-    if (open) { setRemindAt(''); setRecurrence('none'); setNotes('') }
-  }, [open])
-
-  const toDatetimeLocal = () => {
-    const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0)
-    const pad = n => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title={`Add Reminder — ${task?.name || ''}`}
-      footer={
-        <>
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onSave({ remindAt, recurrence, notes })}>Set Reminder</button>
-        </>
-      }>
-      <div className="form-group">
-        <label className="form-label">Date &amp; Time</label>
-        <input className="form-input" type="datetime-local" value={remindAt || toDatetimeLocal()}
-          onChange={e => setRemindAt(e.target.value)} />
-      </div>
-      <div className="form-group">
-        <label className="form-label">Recurrence</label>
-        <select className="form-select" value={recurrence} onChange={e => setRecurrence(e.target.value)}>
-          <option value="none">One-time</option>
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option>
-        </select>
-      </div>
-      <div className="form-group">
-        <label className="form-label">Notes (optional)</label>
-        <input className="form-input" placeholder="e.g. Follow up on status" value={notes} onChange={e => setNotes(e.target.value)} />
-      </div>
-    </Modal>
-  )
-}
 
 // ── Delete Confirm Modal ───────────────────────────────────
 function DeleteConfirmModal({ task, open, onClose, onConfirm }) {
@@ -640,7 +540,7 @@ export default function Tasks() {
     if (activeTab === 'unassigned') return [
       { icon: '✅', label: 'Mark Done', action: () => { updateTask(task.id, { status: 'done', active: false }); showToast('Marked Done', 'success') } },
       { divider: true },
-      ...(owner ? [{ icon: '🙋', label: `Assign to ${ownerName} & Move to To Do`, action: () => { updateTask(task.id, { status: 'inprogress', assignee_ids: [owner.id] }); showToast(`Assigned to ${ownerName}`, 'success') } }] : []),
+      ...(owner ? [{ icon: '🙋', label: `Assign to ${ownerName}`, action: () => { updateTask(task.id, { status: 'inprogress', assignee_ids: [owner.id] }); showToast(`Assigned to ${ownerName}`, 'success') } }] : []),
       { icon: '👤', label: 'Add / Change Assignee', action: () => setAddAssigneeTask(task) },
       { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
       { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },

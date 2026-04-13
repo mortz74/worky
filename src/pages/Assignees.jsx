@@ -153,6 +153,19 @@ export default function Assignees() {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const filtered = data.assignees.filter(a => !search || a.name.toLowerCase().includes(search.toLowerCase()))
 
+  // Group by department, sorted alphabetically; blank dept goes to "No Department"
+  const grouped = filtered.reduce((acc, a) => {
+    const dept = a.dept?.trim() || 'No Department'
+    if (!acc[dept]) acc[dept] = []
+    acc[dept].push(a)
+    return acc
+  }, {})
+  const deptKeys = Object.keys(grouped).sort((a, b) => {
+    if (a === 'No Department') return 1
+    if (b === 'No Department') return -1
+    return a.localeCompare(b)
+  })
+
   const resetPhoto = () => { setPhotoFile(null); setPhotoPreview(''); setRemovePhoto(false) }
 
   const handlePhotoChange = (file) => {
@@ -241,64 +254,75 @@ export default function Assignees() {
             <input className="search-input" placeholder="Search assignees…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
-        <div className="grid-3">
-          {filtered.map(a => {
-            const tasks = data.tasks.filter(t => t.assigneeId === a.id)
-            const open = tasks.filter(t => t.status !== 'done').length
-            return (
-              <div key={a.id} className="card" style={{ padding: 20, cursor: 'pointer', position: 'relative', outline: a.isOwner ? '2px solid #f59e0b' : 'none' }}
-                onClick={() => navigate(`/assignees/${a.id}`)}>
+        {filtered.length === 0 && (
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--slate-400)', fontSize: 13 }}>No assignees yet.</div>
+        )}
+        {deptKeys.map(dept => (
+          <div key={dept} style={{ marginBottom: 32 }}>
+            {/* Department header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--slate-600)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{dept}</span>
+              <span style={{ fontSize: 12, color: 'var(--slate-400)', fontWeight: 500 }}>({grouped[dept].length})</span>
+              <div style={{ flex: 1, height: 1, background: 'var(--slate-200)' }} />
+            </div>
+            <div className="grid-3">
+              {grouped[dept].map(a => {
+                const tasks = data.tasks.filter(t => t.assigneeId === a.id)
+                const open = tasks.filter(t => t.status !== 'done').length
+                return (
+                  <div key={a.id} className="card" style={{ padding: 20, cursor: 'pointer', position: 'relative', outline: a.isOwner ? '2px solid #f59e0b' : 'none' }}
+                    onClick={() => navigate(`/assignees/${a.id}`)}>
 
-                {/* Owner crown badge */}
-                {a.isOwner && (
-                  <div style={{ position: 'absolute', top: 10, left: 10, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <svg viewBox="0 0 20 16" fill="#f59e0b" width="13" height="11"><path d="M1 14h18v2H1v-2zm1-2L3 4l4 4 3-6 3 6 4-4 1 8H2z"/></svg>
-                    Owner
+                    {/* Owner crown badge */}
+                    {a.isOwner && (
+                      <div style={{ position: 'absolute', top: 10, left: 10, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <svg viewBox="0 0 20 16" fill="#f59e0b" width="13" height="11"><path d="M1 14h18v2H1v-2zm1-2L3 4l4 4 3-6 3 6 4-4 1 8H2z"/></svg>
+                        Owner
+                      </div>
+                    )}
+
+                    {/* Edit button */}
+                    <div style={{ position: 'absolute', top: 10, right: 10 }}>
+                      <button
+                        onClick={e => openEdit(e, a)}
+                        style={{ background: 'var(--slate-100)', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer', color: 'var(--slate-500)', fontWeight: 600 }}
+                        title="Edit assignee">
+                        ✏️ Edit
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, marginTop: a.isOwner ? 28 : 0 }}>
+                      <Avatar assignee={a} size={48} />
+                      <div style={{ minWidth: 0, paddingRight: 56 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</div>
+                        {a.email && <div style={{ fontSize: 12, color: 'var(--slate-400)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.email}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--slate-500)' }}>
+                      <span><strong>{tasks.length}</strong> tasks</span>
+                      <span><strong>{open}</strong> open</span>
+                      <span><strong>{tasks.length - open}</strong> done</span>
+                    </div>
+                    {a.notesUrl && (
+                      <a
+                        href={a.notesUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 10, fontSize: 12, color: 'var(--blue-600)', textDecoration: 'none', fontWeight: 600 }}
+                        onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                        onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        Notes
+                      </a>
+                    )}
                   </div>
-                )}
-
-                {/* Edit button */}
-                <div style={{ position: 'absolute', top: 10, right: 10 }}>
-                  <button
-                    onClick={e => openEdit(e, a)}
-                    style={{ background: 'var(--slate-100)', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer', color: 'var(--slate-500)', fontWeight: 600 }}
-                    title="Edit assignee">
-                    ✏️ Edit
-                  </button>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, marginTop: a.isOwner ? 28 : 0 }}>
-                  <Avatar assignee={a} size={48} />
-                  <div style={{ minWidth: 0, paddingRight: 56 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</div>
-                    {a.dept && <div style={{ fontSize: 12, color: 'var(--slate-500)' }}>{a.dept}</div>}
-                    {a.email && <div style={{ fontSize: 12, color: 'var(--slate-400)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.email}</div>}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--slate-500)' }}>
-                  <span><strong>{tasks.length}</strong> tasks</span>
-                  <span><strong>{open}</strong> open</span>
-                  <span><strong>{tasks.length - open}</strong> done</span>
-                </div>
-                {a.notesUrl && (
-                  <a
-                    href={a.notesUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 10, fontSize: 12, color: 'var(--blue-600)', textDecoration: 'none', fontWeight: 600 }}
-                    onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
-                    onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                    Notes
-                  </a>
-                )}
-              </div>
-            )
-          })}
-          {filtered.length === 0 && <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 40, color: 'var(--slate-400)', fontSize: 13 }}>No assignees yet.</div>}
-        </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Add modal */}

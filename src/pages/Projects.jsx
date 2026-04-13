@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../contexts/AppContext'
 import { sb } from '../lib/supabase'
@@ -28,6 +28,7 @@ function ProjectForm({ form, set, photoPreview, onPhotoChange, onRemovePhoto, do
         <div style={{ display: 'flex', gap: 8 }}>
           {[
             { value: 'project', label: '📅 Project', sub: 'Has start & end dates' },
+            { value: 'forum',   label: '💬 Forum',   sub: 'Long-term, no dates' },
             { value: 'action',  label: '⚡ Action',  sub: 'Long-term, no dates' },
           ].map(opt => (
             <button
@@ -66,7 +67,7 @@ function ProjectForm({ form, set, photoPreview, onPhotoChange, onRemovePhoto, do
         <textarea className="form-textarea" value={form.desc} onChange={e => set('desc', e.target.value)} rows={3} />
       </div>
 
-      {/* Dates — only for Project type */}
+      {/* Dates — only for Project type (not forum or action) */}
       {form.projectType === 'project' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div className="form-group">
@@ -156,7 +157,7 @@ export default function Projects() {
   const [domainF, setDomainF] = useState('')
   const navigate = useNavigate()
   const [search, setSearch]       = useState('')
-  const [statusF, setStatusF]     = useState('')
+  const [statusF, setStatusF]     = useState('active')
   const [showAdd, setShowAdd]     = useState(false)
   const [editTarget, setEditTarget] = useState(null)
   const [form, setForm]           = useState(emptyForm())
@@ -164,6 +165,7 @@ export default function Projects() {
   const [photoFile, setPhotoFile]     = useState(null)
   const [photoPreview, setPhotoPreview] = useState('')
   const [removePhoto, setRemovePhoto]   = useState(false)
+  const [notesUrlTarget, setNotesUrlTarget] = useState(null)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const resetPhoto = () => { setPhotoFile(null); setPhotoPreview(''); setRemovePhoto(false) }
@@ -181,7 +183,8 @@ export default function Projects() {
     return true
   })
 
-  const projectItems = filtered.filter(p => p.projectType !== 'action')
+  const projectItems = filtered.filter(p => p.projectType === 'project' || (!p.projectType))
+  const forumItems   = filtered.filter(p => p.projectType === 'forum')
   const actionItems  = filtered.filter(p => p.projectType === 'action')
 
   const openAdd = () => { setForm(emptyForm()); resetPhoto(); setShowAdd(true) }
@@ -220,7 +223,7 @@ export default function Projects() {
       name: form.name.trim(),
       description: form.desc,
       start_date: form.projectType === 'project' ? (form.start || null) : null,
-      due_date:   form.projectType === 'project' ? (form.due   || null) : null,
+      due_date:   form.projectType === 'project' ? (form.due   || null)  : null,
       status: form.status,
       tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
       emoji: form.emoji || '📁',
@@ -243,7 +246,7 @@ export default function Projects() {
       name: form.name.trim(),
       description: form.desc,
       start_date: form.projectType === 'project' ? (form.start || null) : null,
-      due_date:   form.projectType === 'project' ? (form.due   || null) : null,
+      due_date:   form.projectType === 'project' ? (form.due   || null)  : null,
       status: form.status,
       tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
       emoji: form.emoji || '📁',
@@ -290,8 +293,21 @@ export default function Projects() {
             <ProjectCard
               key={p.id} project={p}
               onOpen={() => navigate(`/projects/${p.id}`)}
-              onEdit={e => openEdit(e, p)}
-              onToggle={() => updateProject(p.id, { status: p.status === 'active' ? 'archive' : 'active' })}
+              onEdit={(e, proj) => openEdit(e, proj)}
+              onToggle={proj => updateProject(proj.id, { status: proj.status === 'active' ? 'archive' : 'active' })}
+              onNotesUrl={proj => setNotesUrlTarget(proj)}
+            />
+          ))}
+
+          {/* Forums group */}
+          {forumItems.length > 0 && <GroupLabel label="Forums" count={forumItems.length} />}
+          {forumItems.map(p => (
+            <ProjectCard
+              key={p.id} project={p}
+              onOpen={() => navigate(`/projects/${p.id}`)}
+              onEdit={(e, proj) => openEdit(e, proj)}
+              onToggle={proj => updateProject(proj.id, { status: proj.status === 'active' ? 'archive' : 'active' })}
+              onNotesUrl={proj => setNotesUrlTarget(proj)}
             />
           ))}
 
@@ -301,8 +317,9 @@ export default function Projects() {
             <ProjectCard
               key={p.id} project={p}
               onOpen={() => navigate(`/projects/${p.id}`)}
-              onEdit={e => openEdit(e, p)}
-              onToggle={() => updateProject(p.id, { status: p.status === 'active' ? 'archive' : 'active' })}
+              onEdit={(e, proj) => openEdit(e, proj)}
+              onToggle={proj => updateProject(proj.id, { status: proj.status === 'active' ? 'archive' : 'active' })}
+              onNotesUrl={proj => setNotesUrlTarget(proj)}
             />
           ))}
 
@@ -333,12 +350,53 @@ export default function Projects() {
         }>
         <ProjectForm form={form} set={set} photoPreview={photoPreview} onPhotoChange={handlePhotoChange} onRemovePhoto={() => { resetPhoto(); setRemovePhoto(true) }} domains={data.domains} />
       </Modal>
+
+      <NotesUrlModal
+        project={notesUrlTarget}
+        open={!!notesUrlTarget}
+        onClose={() => setNotesUrlTarget(null)}
+        onSave={async (url) => {
+          await updateProject(notesUrlTarget.id, { notes_url: url })
+          showToast(url ? 'Notes link saved' : 'Notes link cleared', 'success')
+          setNotesUrlTarget(null)
+        }}
+      />
     </div>
   )
 }
 
-function ProjectCard({ project: p, onOpen, onEdit, onToggle }) {
+// ── Notes URL Modal ───────────────────────────────────────
+function NotesUrlModal({ project, open, onClose, onSave }) {
+  const [url, setUrl] = useState('')
+  useEffect(() => { if (project) setUrl(project.notesUrl || '') }, [project])
+  return (
+    <Modal open={open} onClose={onClose} title="Add / Update Notes Link"
+      footer={<>
+        <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={() => onSave(url.trim() || null)}>Save</button>
+      </>}>
+      <div className="form-group">
+        <label className="form-label">Notes URL</label>
+        <input className="form-input" type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://docs.google.com/…" />
+      </div>
+      {url && (
+        <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--slate-400)', padding: '4px 0' }} onClick={() => setUrl('')}>Clear link</button>
+      )}
+    </Modal>
+  )
+}
+
+function ProjectCard({ project: p, onOpen, onEdit, onToggle, onNotesUrl }) {
   const { data } = useApp()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    const handler = e => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   const hasReminder = data.reminders.some(r => r.entityType === 'project' && r.entityId === p.id)
   const tasks = data.tasks.filter(t => (t.projectIds || []).includes(p.id))
   const done  = tasks.filter(t => t.status === 'done').length
@@ -349,10 +407,9 @@ function ProjectCard({ project: p, onOpen, onEdit, onToggle }) {
     : 'linear-gradient(135deg, #1e40af, #3b82f6)'
 
   return (
-    <div className="card project-card" style={{ cursor: 'pointer', overflow: 'hidden' }} onClick={onOpen}>
-      {/* Header: background image or gradient */}
-      <div style={{ height: 88, background: headerBg, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', padding: '0 8px 8px', position: 'relative' }}>
-        {/* Scrim for readability when photo is set */}
+    <div className="card project-card" style={{ cursor: 'pointer', overflow: 'visible', position: 'relative' }} onClick={onOpen}>
+      {/* Header — overflow hidden only here for background clipping */}
+      <div style={{ height: 88, background: headerBg, display: 'flex', alignItems: 'flex-end', padding: '0 8px 8px', position: 'relative', borderRadius: '8px 8px 0 0', overflow: 'hidden' }}>
         {p.photoUrl && (
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,.45) 100%)' }} />
         )}
@@ -361,17 +418,39 @@ function ProjectCard({ project: p, onOpen, onEdit, onToggle }) {
           <span style={{ fontSize: 24 }}>{p.emoji}</span>
           <span style={{
             fontSize: 10, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase',
-            background: p.projectType === 'action' ? 'rgba(245,158,11,.9)' : 'rgba(255,255,255,.85)',
-            color: p.projectType === 'action' ? '#fff' : 'var(--slate-700)',
+            background: p.projectType === 'action' ? 'rgba(245,158,11,.9)' : p.projectType === 'forum' ? 'rgba(139,92,246,.9)' : 'rgba(255,255,255,.85)',
+            color: p.projectType === 'action' || p.projectType === 'forum' ? '#fff' : 'var(--slate-700)',
             padding: '2px 7px', borderRadius: 10,
           }}>
-            {p.projectType === 'action' ? '⚡ Action' : '📅 Project'}
+            {p.projectType === 'action' ? '⚡ Action' : p.projectType === 'forum' ? '💬 Forum' : '📅 Project'}
           </span>
         </div>
-        {/* Edit button — top right */}
-        <button onClick={onEdit} style={{ position: 'absolute', top: 8, right: 8, zIndex: 1, background: 'rgba(255,255,255,.85)', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600, color: 'var(--slate-700)' }}>
-          ✏️ Edit
+      </div>
+
+      {/* 3-dot menu — anchored to card, outside header so it's not clipped */}
+      <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 20 }} ref={menuRef} onClick={e => e.stopPropagation()}>
+        <button
+          onClick={() => setMenuOpen(o => !o)}
+          style={{ background: 'rgba(255,255,255,.85)', border: 'none', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', color: 'var(--slate-600)', lineHeight: 1 }}
+          title="More options"
+        >
+          <svg viewBox="0 0 16 4" fill="currentColor" width="14" height="4"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="14" cy="2" r="1.5"/></svg>
         </button>
+        {menuOpen && (
+          <div className="dropdown-menu open" style={{ right: 0, left: 'auto', minWidth: 170, top: '100%' }}>
+            <div className="dropdown-item" onClick={() => { onNotesUrl(p); setMenuOpen(false) }}>
+              🔗 Update Notes
+            </div>
+            <div className="dropdown-divider" />
+            <div className="dropdown-item" onClick={e => { onEdit(e, p); setMenuOpen(false) }}>
+              ✏️ Edit
+            </div>
+            <div className="dropdown-divider" />
+            <div className="dropdown-item" onClick={() => { onToggle(p); setMenuOpen(false) }}>
+              {p.status === 'active' ? '📦 Archive' : '✅ Restore'}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Card body */}
@@ -392,11 +471,18 @@ function ProjectCard({ project: p, onOpen, onEdit, onToggle }) {
             <div style={{ fontSize: 11, color: 'var(--slate-400)', marginTop: 4 }}>{done}/{tasks.length} tasks done</div>
           </div>
         )}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-sm btn-secondary" onClick={e => { e.stopPropagation(); onToggle() }}>
-            {p.status === 'active' ? '📦 Archive' : '✅ Restore'}
-          </button>
-        </div>
+        {p.notesUrl && (
+          <a
+            href={p.notesUrl} target="_blank" rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--blue-600)', textDecoration: 'none', fontWeight: 600 }}
+            onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+            onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            Notes
+          </a>
+        )}
       </div>
     </div>
   )

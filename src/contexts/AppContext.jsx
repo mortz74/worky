@@ -7,7 +7,7 @@ const AppContext = createContext(null)
 const mapOwner    = r => ({ id: r.id, name: r.name, email: r.email, role: r.role || 'Owner', color: r.color || '#2563eb', initials: r.initials || r.name.slice(0,2).toUpperCase() })
 const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', notesUrl: r.notes_url || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false })
 const mapDomain   = r => ({ id: r.id, name: r.name })
-const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '', projectType: r.project_type || 'project', domain: r.domain || '' })
+const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '', projectType: r.project_type || 'project', domain: r.domain || '', notesUrl: r.notes_url || '' })
 const mapReminder = r => ({ id: r.id, entityType: r.entity_type, entityId: r.entity_id, remindAt: r.remind_at, recurrence: r.recurrence || 'none', notes: r.notes || '' })
 
 // Tasks now carry assigneeIds[] and projectIds[] from the junction tables.
@@ -68,6 +68,7 @@ const toLocalProject = u => {
   if ('photo_url'    in u) m.photoUrl    = u.photo_url
   if ('project_type' in u) m.projectType = u.project_type
   if ('domain'       in u) m.domain      = u.domain
+  if ('notes_url'    in u) m.notesUrl    = u.notes_url
   return m
 }
 
@@ -156,6 +157,12 @@ export function AppProvider({ children }) {
   //   project_ids:  string[]   → replaces all rows in task_projects
   const updateTask = useCallback(async (taskId, updates) => {
     const { assignee_ids, project_ids, ...taskFields } = updates
+
+    // Rule: if assignees are being set on an Inbox task, promote to In Progress
+    if (assignee_ids !== undefined && assignee_ids.length > 0 && !taskFields.status) {
+      const current = data.tasks.find(t => t.id === taskId)
+      if (current?.status === 'todo') taskFields.status = 'inprogress'
+    }
 
     // 1. Update main tasks table (if any scalar fields changed)
     if (Object.keys(taskFields).length > 0) {

@@ -5,12 +5,17 @@ import StatusBadge from '../components/StatusBadge'
 import Avatar from '../components/Avatar'
 import EditTaskModal from '../components/EditTaskModal'
 import QuickTaskModal from '../components/QuickTaskModal'
+import AddAssigneeModal from '../components/AddAssigneeModal'
+import AddDueDateModal from '../components/AddDueDateModal'
+import AddReminderModal from '../components/AddReminderModal'
+import Modal from '../components/Modal'
 
 const fmt = d => { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 const isOverdue = d => d && new Date(d) < new Date()
 
-function DashboardTaskRow({ task, onEdit, onMenuAction }) {
-  const { data } = useApp()
+function DashboardTaskRow({ task, onEdit, onMenuAction, onAddAssignee, onAddDueDate, onAddReminder, onDelete }) {
+  const { data, updateTask, showToast } = useApp()
+  const owner = data.assignees.find(a => a.isOwner)
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
@@ -74,11 +79,34 @@ function DashboardTaskRow({ task, onEdit, onMenuAction }) {
                 <span className="dot-status dot-done"></span> Mark Done
               </div>
               <div className="dropdown-divider"></div>
+              {owner && (
+                <div className="dropdown-item" onClick={async () => {
+                  setMenuOpen(false)
+                  const existing = task.assigneeIds || []
+                  const ids = existing.includes(owner.id) ? existing : [...existing, owner.id]
+                  await updateTask(task.id, { assignee_ids: ids, status: 'inprogress' })
+                  showToast(`Assigned to ${owner.name} & moved to To Do`, 'success')
+                }}>
+                  🏅 Assign to {owner.name}
+                </div>
+              )}
+              <div className="dropdown-item" onClick={() => { onAddAssignee(task); setMenuOpen(false) }}>
+                👤 Add / Change Assignee
+              </div>
+              <div className="dropdown-item" onClick={() => { onAddDueDate(task); setMenuOpen(false) }}>
+                📅 Add Due Date
+              </div>
+              <div className="dropdown-item" onClick={() => { onAddReminder(task); setMenuOpen(false) }}>
+                🔔 Add Reminder
+              </div>
+              <div className="dropdown-divider"></div>
               <div className="dropdown-item" onClick={() => { onMenuAction(task.id, 'roadmap'); setMenuOpen(false) }}>
                 🗺 {task.roadmap ? 'Remove from Roadmap' : 'Add to Roadmap'}
               </div>
               <div className="dropdown-divider"></div>
               <div className="dropdown-item" onClick={() => { onEdit(task); setMenuOpen(false) }}>✏️ Edit Task</div>
+              <div className="dropdown-divider"></div>
+              <div className="dropdown-item" onClick={() => { onDelete(task); setMenuOpen(false) }} style={{ color: '#ef4444' }}>🗑️ Delete Task</div>
             </div>
           )}
         </div>
@@ -88,11 +116,15 @@ function DashboardTaskRow({ task, onEdit, onMenuAction }) {
 }
 
 export default function Dashboard() {
-  const { data, updateTask, showToast } = useApp()
+  const { data, updateTask, deleteTask, createReminder, showToast } = useApp()
   const navigate = useNavigate()
   const today = new Date(); today.setHours(0,0,0,0)
   const sevenDaysAgo = new Date(today); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-  const [editTask, setEditTask]   = useState(null)
+  const [editTask, setEditTask]             = useState(null)
+  const [addAssigneeTask, setAddAssigneeTask]   = useState(null)
+  const [addDueDateTask, setAddDueDateTask]     = useState(null)
+  const [addReminderTask, setAddReminderTask]   = useState(null)
+  const [deleteConfirmTask, setDeleteConfirmTask] = useState(null)
   const [showQuick, setShowQuick] = useState(false)
   const [splitOpen, setSplitOpen] = useState(false)
   const splitRef = useRef(null)
@@ -112,13 +144,20 @@ export default function Dashboard() {
   const todoCount       = tasks.filter(t => t.status === 'inprogress' && !t.roadmap && !!owner && (t.assigneeIds||[]).includes(owner.id) && t.active !== false).length
   const waitingCount    = tasks.filter(t => t.status === 'inprogress' && !t.roadmap && (!owner || !(t.assigneeIds||[]).includes(owner.id)) && (t.assigneeIds||[]).length > 0 && t.active !== false).length
   const roadmapCount    = tasks.filter(t => t.status === 'inprogress' && t.roadmap && t.active !== false).length
-  const unassignedCount = tasks.filter(t => t.status === 'inprogress' && !t.roadmap && (t.assigneeIds||[]).length === 0 && t.active !== false).length
+  const unassignedCount = tasks.filter(t => t.status !== 'done' && !t.roadmap && (t.assigneeIds||[]).length === 0 && t.active !== false).length
   const completedCount  = tasks.filter(t => t.status === 'done' && t.createdAt && new Date(t.createdAt) >= sevenDaysAgo).length
 
-  // Newest first, show top 8
-  const recent = [...tasks]
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1)
+
+  // Section 1: In Progress — overdue or due today, sorted earliest due first
+  const inProgressDue = tasks
+    .filter(t => t.status === 'inprogress' && t.active !== false && t.due && new Date(t.due) < tomorrow)
+    .sort((a, b) => new Date(a.due) - new Date(b.due))
+
+  // Section 2: Inbox — all todo tasks, newest created first
+  const inboxTasks = tasks
+    .filter(t => t.status === 'todo' && t.active !== false)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, 8)
 
   const handleMenuAction = async (taskId, action) => {
     const t = data.tasks.find(t => t.id === taskId)
@@ -186,7 +225,7 @@ export default function Dashboard() {
           </div>
 
           {/* 5 — Unassigned */}
-          <div className="stat-card" style={{ borderLeft: '4px solid #94a3b8' }}>
+          <div className="stat-card stat-card-clickable" onClick={() => navigate('/tasks?tab=unassigned')} style={{ borderLeft: '4px solid #94a3b8' }}>
             <div className="stat-label">UNASSIGNED</div>
             <div className="stat-value" style={{ color: '#64748b' }}>{unassignedCount}</div>
             <div className="stat-sub">Need an owner</div>
@@ -201,31 +240,47 @@ export default function Dashboard() {
 
         </div>
 
-        <div className="card" style={{ padding: '18px 22px' }}>
+        {/* Section 1 — In Progress: Overdue & Due Today */}
+        <div className="card" style={{ padding: '18px 22px', marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>⚡ Recent Tasks</div>
-            <span className="link" style={{ fontSize: 13, color: 'var(--blue-600)', cursor: 'pointer' }} onClick={() => navigate('/tasks')}>View All →</span>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>🔥 In Progress — Overdue &amp; Due Today <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--slate-400)', marginLeft: 6 }}>({inProgressDue.length})</span></div>
+            <span className="link" style={{ fontSize: 13, color: 'var(--blue-600)', cursor: 'pointer' }} onClick={() => navigate('/tasks?tab=todo')}>View All →</span>
           </div>
-          {recent.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '28px 0', color: 'var(--slate-400)', fontSize: 13 }}>No tasks yet. Create your first task!</div>
+          {inProgressDue.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--slate-400)', fontSize: 13 }}>No overdue or due-today tasks. You're on track! 🎉</div>
           ) : (
-            <div className="table-scroll"><table className="task-table">
+            <div className="table-scroll" style={{ overflow: 'visible' }}><table className="task-table">
               <thead>
                 <tr><th>TASK</th><th>PROJECT</th><th>ASSIGNEE</th><th>STATUS</th><th>DUE</th><th></th></tr>
               </thead>
               <tbody>
-                {recent.map(t => (
-                  <DashboardTaskRow
-                    key={t.id}
-                    task={t}
-                    onEdit={setEditTask}
-                    onMenuAction={handleMenuAction}
-                  />
+                {inProgressDue.map(t => (
+                  <DashboardTaskRow key={t.id} task={t} onEdit={setEditTask} onMenuAction={handleMenuAction} onAddAssignee={setAddAssigneeTask} onAddDueDate={setAddDueDateTask} onAddReminder={setAddReminderTask} onDelete={setDeleteConfirmTask} />
                 ))}
               </tbody>
             </table></div>
           )}
         </div>
+
+        {/* Section 2 — Inbox (hidden when empty) */}
+        {inboxTasks.length > 0 && (
+          <div className="card" style={{ padding: '18px 22px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>📥 Inbox <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--slate-400)', marginLeft: 6 }}>({inboxTasks.length})</span></div>
+              <span className="link" style={{ fontSize: 13, color: 'var(--blue-600)', cursor: 'pointer' }} onClick={() => navigate('/tasks?tab=inbox')}>View All →</span>
+            </div>
+            <div className="table-scroll" style={{ overflow: 'visible' }}><table className="task-table">
+              <thead>
+                <tr><th>TASK</th><th>PROJECT</th><th>ASSIGNEE</th><th>STATUS</th><th>DUE</th><th></th></tr>
+              </thead>
+              <tbody>
+                {inboxTasks.map(t => (
+                  <DashboardTaskRow key={t.id} task={t} onEdit={setEditTask} onMenuAction={handleMenuAction} onAddAssignee={setAddAssigneeTask} onAddDueDate={setAddDueDateTask} onAddReminder={setAddReminderTask} onDelete={setDeleteConfirmTask} />
+                ))}
+              </tbody>
+            </table></div>
+          </div>
+        )}
       </div>
 
       <QuickTaskModal open={showQuick} onClose={() => setShowQuick(false)} />
@@ -242,6 +297,57 @@ export default function Dashboard() {
           }}
         />
       )}
+
+      <AddAssigneeModal
+        task={addAssigneeTask}
+        open={!!addAssigneeTask}
+        onClose={() => setAddAssigneeTask(null)}
+        onSave={async (ids) => {
+          await updateTask(addAssigneeTask.id, { assignee_ids: ids })
+          showToast('Assignees updated', 'success')
+          setAddAssigneeTask(null)
+        }}
+      />
+
+      <AddDueDateModal
+        task={addDueDateTask}
+        open={!!addDueDateTask}
+        onClose={() => setAddDueDateTask(null)}
+        onSave={async (due) => {
+          await updateTask(addDueDateTask.id, { due_date: due })
+          showToast(due ? 'Due date set' : 'Due date cleared', 'success')
+          setAddDueDateTask(null)
+        }}
+      />
+
+      <AddReminderModal
+        task={addReminderTask}
+        open={!!addReminderTask}
+        onClose={() => setAddReminderTask(null)}
+        onSave={async ({ remindAt, recurrence, notes }) => {
+          if (!remindAt) { showToast('Please pick a date and time', 'error'); return }
+          await createReminder({ entityType: 'task', entityId: addReminderTask.id, remindAt: new Date(remindAt).toISOString(), recurrence, notes })
+          showToast('Reminder set', 'success')
+          setAddReminderTask(null)
+        }}
+      />
+
+      <Modal
+        open={!!deleteConfirmTask}
+        onClose={() => setDeleteConfirmTask(null)}
+        title="Delete Task"
+        footer={<>
+          <button className="btn btn-secondary" onClick={() => setDeleteConfirmTask(null)}>Cancel</button>
+          <button className="btn btn-primary" style={{ background: '#ef4444' }} onClick={async () => {
+            await deleteTask(deleteConfirmTask.id)
+            showToast('Task deleted', 'success')
+            setDeleteConfirmTask(null)
+          }}>Delete</button>
+        </>}>
+        <p style={{ color: 'var(--slate-600)', fontSize: 14, margin: 0 }}>
+          Are you sure you want to delete <strong>"{deleteConfirmTask?.name}"</strong>? This cannot be undone.
+        </p>
+      </Modal>
     </div>
   )
 }
