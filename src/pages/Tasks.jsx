@@ -12,8 +12,8 @@ import AddAssigneeModal from '../components/AddAssigneeModal'
 import AddDueDateModal from '../components/AddDueDateModal'
 import AddReminderModal from '../components/AddReminderModal'
 
-const fmt = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
-const isOverdue = d => d && new Date(d) < new Date()
+const fmt = d => { if (!d) return '—'; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
+const isOverdue = d => { if (!d) return false; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day) < new Date() }
 
 const TABS = [
   { key: 'inbox',      label: 'Inbox' },

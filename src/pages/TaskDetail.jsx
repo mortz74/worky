@@ -7,8 +7,8 @@ import FileList from '../components/FileList'
 import AddFileModal from '../components/AddFileModal'
 import ReminderSection from '../components/ReminderSection'
 
-const fmt = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
-const isOverdue = d => d && new Date(d) < new Date()
+const fmt = d => { if (!d) return '—'; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
+const isOverdue = d => { if (!d) return false; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day) < new Date() }
 
 export default function TaskDetail() {
   const { id } = useParams()
@@ -193,8 +193,8 @@ export default function TaskDetail() {
                       type="date"
                       className="form-input"
                       style={{ fontSize: 13, padding: '5px 8px' }}
-                      value={t.start ? new Date(t.start).toISOString().slice(0, 10) : ''}
-                      onChange={e => save({ start_date: e.target.value ? new Date(e.target.value).toISOString() : null }, 'Start date updated')}
+                      value={t.start ? t.start.slice(0, 10) : ''}
+                      onChange={e => save({ start_date: e.target.value || null }, 'Start date updated')}
                     />
                   </div>
                   <div>
@@ -203,8 +203,8 @@ export default function TaskDetail() {
                       type="date"
                       className="form-input"
                       style={{ fontSize: 13, padding: '5px 8px', color: isOverdue(t.due) && t.status !== 'done' ? '#ef4444' : undefined, fontWeight: isOverdue(t.due) && t.status !== 'done' ? 700 : undefined }}
-                      value={t.due ? new Date(t.due).toISOString().slice(0, 10) : ''}
-                      onChange={e => save({ due_date: e.target.value ? new Date(e.target.value).toISOString() : null }, 'Due date updated')}
+                      value={t.due ? t.due.slice(0, 10) : ''}
+                      onChange={e => save({ due_date: e.target.value || null }, 'Due date updated')}
                     />
                   </div>
                 </div>

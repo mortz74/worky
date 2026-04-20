@@ -10,8 +10,8 @@ import AddDueDateModal from '../components/AddDueDateModal'
 import AddReminderModal from '../components/AddReminderModal'
 import Modal from '../components/Modal'
 
-const fmt = d => { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
-const isOverdue = d => d && new Date(d) < new Date()
+const fmt = d => { if (!d) return '—'; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
+const isOverdue = d => { if (!d) return false; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day) < new Date() }
 
 function DashboardTaskRow({ task, onEdit, onMenuAction, onAddAssignee, onAddDueDate, onAddReminder, onDelete }) {
   const { data, updateTask, showToast, currentAssigneeId } = useApp()

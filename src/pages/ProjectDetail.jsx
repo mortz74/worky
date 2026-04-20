@@ -7,7 +7,7 @@ import FileList from '../components/FileList'
 import AddFileModal from '../components/AddFileModal'
 import QuickTaskModal from '../components/QuickTaskModal'
 
-const fmt = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
+const fmt = d => { if (!d) return '—'; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 
 const TABS = [
   { key: 'tasks',   label: 'Tasks' },
@@ -329,8 +329,8 @@ export default function ProjectDetail() {
                   type="date"
                   className="form-input"
                   style={{ fontSize: 13, padding: '5px 8px' }}
-                  value={p.start ? new Date(p.start).toISOString().slice(0, 10) : ''}
-                  onChange={e => saveProject({ start_date: e.target.value ? new Date(e.target.value).toISOString() : null }, 'Start date updated')}
+                  value={p.start ? p.start.slice(0, 10) : ''}
+                  onChange={e => saveProject({ start_date: e.target.value || null }, 'Start date updated')}
                 />
               </div>
 
@@ -340,8 +340,8 @@ export default function ProjectDetail() {
                   type="date"
                   className="form-input"
                   style={{ fontSize: 13, padding: '5px 8px' }}
-                  value={p.due ? new Date(p.due).toISOString().slice(0, 10) : ''}
-                  onChange={e => saveProject({ due_date: e.target.value ? new Date(e.target.value).toISOString() : null }, 'Due date updated')}
+                  value={p.due ? p.due.slice(0, 10) : ''}
+                  onChange={e => saveProject({ due_date: e.target.value || null }, 'Due date updated')}
                 />
               </div>
 

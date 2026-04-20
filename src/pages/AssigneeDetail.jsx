@@ -9,8 +9,8 @@ import FileList from '../components/FileList'
 import AddFileModal from '../components/AddFileModal'
 import QuickTaskModal from '../components/QuickTaskModal'
 
-const fmt = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
-const isOverdue = d => d && new Date(d) < new Date()
+const fmt = d => { if (!d) return '—'; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
+const isOverdue = d => { if (!d) return false; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day) < new Date() }
 const toDatetimeLocal = iso => { if (!iso) return ''; const d = new Date(iso); const pad = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` }
 
 function AddDueDateModal({ task, open, onClose, onSave }) {
