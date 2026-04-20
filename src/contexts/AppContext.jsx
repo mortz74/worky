@@ -123,7 +123,17 @@ export function AppProvider({ children }) {
       .eq('user_id', uid)
       .maybeSingle()
 
-    console.log('[Worky] resolveWorkspace', { uid, email, membership, wmErr })
+    console.log('[Worky] resolveWorkspace', { uid, email, membership, wmErr: wmErr?.message })
+
+    // If workspace_members query errored (table issue, RLS, etc.) fall back immediately
+    if (wmErr) {
+      console.warn('[Worky] workspace_members unavailable, falling back to own workspace:', wmErr.message, wmErr.code)
+      setWorkspaceId(uid)
+      setIsAdmin(true)
+      setCurrentAssigneeId(null)
+      workspaceIdRef.current = uid
+      return uid
+    }
 
     if (membership) {
       setWorkspaceId(membership.workspace_id)
@@ -133,7 +143,7 @@ export function AppProvider({ children }) {
       return membership.workspace_id
     }
 
-    // No membership: try to auto-match by email to an existing assignee
+    // No membership row yet: try to auto-match by email to an existing assignee
     if (email) {
       const { data: matched } = await sb
         .from('assignees')
@@ -143,7 +153,6 @@ export function AppProvider({ children }) {
 
       if (matched) {
         const wsId = matched.user_id
-        // Create membership + link assignee
         await sb.from('workspace_members').insert({
           workspace_id: wsId,
           user_id: uid,
@@ -161,7 +170,7 @@ export function AppProvider({ children }) {
       }
     }
 
-    // Fallback: treat as admin of their own workspace (first-time setup)
+    // Fallback: treat as admin of their own workspace
     setWorkspaceId(uid)
     setIsAdmin(true)
     setCurrentAssigneeId(null)
