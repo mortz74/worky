@@ -113,6 +113,7 @@ export default function Files() {
         link: f.link || '',
         createdAt: f.created_at || '',
         archived: f.archived || false,
+        source: f.source || '',
         assignees: (f.assignee_files || [])
           .map(af => af.assignees)
           .filter(Boolean)
@@ -194,7 +195,7 @@ export default function Files() {
     setEditSaving(true)
 
     const { error } = await sb.from('files')
-      .update({ name: editForm.name.trim(), description: editForm.description.trim(), link: editForm.link.trim() })
+      .update({ name: editForm.name.trim(), description: editForm.description.trim(), link: editForm.link.trim(), source: 'Front End' })
       .eq('id', editingFile.id).eq('user_id', user.id)
 
     if (error) { showToast(error.message, 'error'); setEditSaving(false); return }
@@ -219,7 +220,7 @@ export default function Files() {
     const projects  = editForm.project_ids.map(id => data.projects.find(p => p.id === id)).filter(Boolean)
 
     setFiles(fs => fs.map(f => f.id === editingFile.id
-      ? { ...f, name: editForm.name.trim(), description: editForm.description.trim(), link: editForm.link.trim(), assignees, projects }
+      ? { ...f, name: editForm.name.trim(), description: editForm.description.trim(), link: editForm.link.trim(), source: 'Front End', assignees, projects }
       : f
     ))
     showToast('File updated')
@@ -247,7 +248,7 @@ export default function Files() {
 
     const { data: file, error } = await sb
       .from('files')
-      .insert({ name: form.name.trim(), description: form.description.trim(), link: form.link.trim(), user_id: user.id })
+      .insert({ name: form.name.trim(), description: form.description.trim(), link: form.link.trim(), user_id: user.id, source: 'Front End' })
       .select()
       .single()
 
@@ -270,7 +271,7 @@ export default function Files() {
     setFiles(fs => [{
       id: file.id, name: file.name, description: file.description || '',
       link: file.link || '', createdAt: file.created_at || '',
-      archived: false, assignees, projects,
+      archived: false, source: 'Front End', assignees, projects,
     }, ...fs])
 
     showToast('File created')
@@ -379,6 +380,7 @@ export default function Files() {
                   <th style={{ ...thStyle('project'), width: 220 }} onClick={() => handleSort('project')}>
                     PROJECTS <SortIcon col="project" sortCol={sortCol} sortDir={sortDir} />
                   </th>
+                  <th style={{ width: 110 }}>SOURCE</th>
                   <th style={{ width: 40 }} />
                 </tr>
               </thead>
@@ -457,6 +459,11 @@ export default function Files() {
                           ))}
                         </div>
                       )}
+                    </td>
+
+                    {/* Source */}
+                    <td style={{ fontSize: 12, color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>
+                      {file.source || <span style={{ color: 'var(--slate-300)' }}>—</span>}
                     </td>
 
                     {/* 3-dot menu */}

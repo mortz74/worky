@@ -4,15 +4,25 @@ import Modal from './Modal'
 import MultiSelect from './MultiSelect'
 
 export default function QuickTaskModal({ open, onClose, defaultProjectIds = [], defaultAssigneeIds = [] }) {
-  const { data, createTask, showToast, user } = useApp()
+  const { data, createTask, showToast, currentAssigneeId } = useApp()
   const [name, setName] = useState('')
   const [projectIds, setProjectIds] = useState(defaultProjectIds)
-  const [assigneeIds, setAssigneeIds] = useState(defaultAssigneeIds)
+  // Pre-populate with the creator's own assignee if no defaults given
+  const [assigneeIds, setAssigneeIds] = useState(
+    defaultAssigneeIds.length > 0 ? defaultAssigneeIds
+    : currentAssigneeId ? [currentAssigneeId]
+    : []
+  )
   const [saving, setSaving] = useState(false)
 
-  // Sync defaults when they change (e.g. modal reopens with different context)
   useEffect(() => { setProjectIds(defaultProjectIds) }, [defaultProjectIds.join(',')])
-  useEffect(() => { setAssigneeIds(defaultAssigneeIds) }, [defaultAssigneeIds.join(',')])
+  useEffect(() => {
+    setAssigneeIds(
+      defaultAssigneeIds.length > 0 ? defaultAssigneeIds
+      : currentAssigneeId ? [currentAssigneeId]
+      : []
+    )
+  }, [defaultAssigneeIds.join(','), currentAssigneeId])
 
   const reset = () => {
     setName('')
@@ -29,7 +39,6 @@ export default function QuickTaskModal({ open, onClose, defaultProjectIds = [], 
       ? (data.projects.find(p => p.id === projectIds[0])?.domain || null)
       : null
     const task = await createTask({
-      user_id: user.id,
       name: name.trim(),
       description: '',
       status: 'todo',   // Quick Task → Inbox (todo)

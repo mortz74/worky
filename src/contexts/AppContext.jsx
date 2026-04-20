@@ -1,17 +1,25 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { sb } from '../lib/supabase'
 
 const AppContext = createContext(null)
 
 // ── DB → local mappers ────────────────────────────────────────
 const mapOwner    = r => ({ id: r.id, name: r.name, email: r.email, role: r.role || 'Owner', color: r.color || '#2563eb', initials: r.initials || r.name.slice(0,2).toUpperCase() })
-const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', notesUrl: r.notes_url || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false })
+const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', notesUrl: r.notes_url || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false, authUserId: r.auth_user_id || null })
 const mapDomain   = r => ({ id: r.id, name: r.name })
-const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '', projectType: r.project_type || 'project', domain: r.domain || '', notesUrl: r.notes_url || '' })
+const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '', projectType: r.project_type || 'project', domain: r.domain || '', notesUrl: r.notes_url || '', createdBy: r.created_by || null })
 const mapReminder = r => ({ id: r.id, entityType: r.entity_type, entityId: r.entity_id, remindAt: r.remind_at, recurrence: r.recurrence || 'none', notes: r.notes || '' })
+const mapWorkspaceMember = r => ({
+  id: r.id,
+  workspaceId: r.workspace_id,
+  userId: r.user_id,
+  assigneeId: r.assignee_id,
+  role: r.role,
+  invitedEmail: r.invited_email || '',
+  acceptedAt: r.accepted_at || null,
+  createdAt: r.created_at,
+})
 
-// Tasks now carry assigneeIds[] and projectIds[] from the junction tables.
-// assigneeId / projectId are kept as the first element for backward-compat display.
 const mapTask = r => {
   const assigneeIds = (r.task_assignees || []).map(ta => ta.assignee_id)
   const projectIds  = (r.task_projects  || []).map(tp => tp.project_id)
@@ -20,10 +28,9 @@ const mapTask = r => {
     name: r.name,
     desc: r.description || '',
     createdAt: r.created_at || '',
-    // Legacy single-value helpers (first item)
+    createdBy: r.created_by || null,
     assigneeId: assigneeIds[0] || null,
     projectId:  projectIds[0]  || null,
-    // Multi-value arrays
     assigneeIds,
     projectIds,
     ownerId: r.owner_id || null,
@@ -38,7 +45,7 @@ const mapTask = r => {
   }
 }
 
-// ── Partial local-state converters (snake_case DB → camelCase) ──
+// ── Partial local-state converters ────────────────────────────
 const toLocalTask = u => {
   const m = {}
   if ('name'        in u) m.name      = u.name
@@ -74,51 +81,115 @@ const toLocalProject = u => {
 
 const toLocalAssignee = u => {
   const m = {}
-  if ('name'      in u) m.name     = u.name
-  if ('email'     in u) m.email    = u.email
-  if ('dept'      in u) m.dept     = u.dept
-  if ('notes'     in u) m.notes    = u.notes
-  if ('color'     in u) m.color    = u.color
-  if ('initials'  in u) m.initials = u.initials
-  if ('photo_url'  in u) m.photoUrl  = u.photo_url
-  if ('notes_url'  in u) m.notesUrl  = u.notes_url
-  if ('is_owner'   in u) m.isOwner   = u.is_owner
+  if ('name'         in u) m.name       = u.name
+  if ('email'        in u) m.email      = u.email
+  if ('dept'         in u) m.dept       = u.dept
+  if ('notes'        in u) m.notes      = u.notes
+  if ('color'        in u) m.color      = u.color
+  if ('initials'     in u) m.initials   = u.initials
+  if ('photo_url'    in u) m.photoUrl   = u.photo_url
+  if ('notes_url'    in u) m.notesUrl   = u.notes_url
+  if ('is_owner'     in u) m.isOwner    = u.is_owner
+  if ('auth_user_id' in u) m.authUserId = u.auth_user_id
   return m
 }
 
 export function AppProvider({ children }) {
-  const [user, setUser]       = useState(null)
-  const [authReady, setAuthReady] = useState(false)
-  const [data, setData]       = useState({ owners: [], assignees: [], projects: [], tasks: [], domains: [], reminders: [] })
-  const [toast, setToast]     = useState(null)
+  const [user, setUser]             = useState(null)
+  const [authReady, setAuthReady]   = useState(false)
+  const [workspaceId, setWorkspaceId]           = useState(null)
+  const [isAdmin, setIsAdmin]                   = useState(false)
+  const [currentAssigneeId, setCurrentAssigneeId] = useState(null)
+  const [workspaceMembers, setWorkspaceMembers] = useState([])
+  const [data, setData]             = useState({ owners: [], assignees: [], projects: [], tasks: [], domains: [], reminders: [] })
+  const [toast, setToast]           = useState(null)
+
+  // Keep latest workspaceId in a ref so callbacks always have the current value
+  const workspaceIdRef = useRef(null)
+  useEffect(() => { workspaceIdRef.current = workspaceId }, [workspaceId])
 
   const showToast = useCallback((msg, type = 'success') => {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
   }, [])
 
+  // ── Workspace resolution ──────────────────────────────────
+  // Returns the workspaceId to use for all subsequent data loads
+  const resolveWorkspace = useCallback(async (uid, email) => {
+    // Look up existing membership
+    const { data: membership, error: wmErr } = await sb
+      .from('workspace_members')
+      .select('*')
+      .eq('user_id', uid)
+      .maybeSingle()
+
+    console.log('[Worky] resolveWorkspace', { uid, email, membership, wmErr })
+
+    if (membership) {
+      setWorkspaceId(membership.workspace_id)
+      setIsAdmin(membership.role === 'admin')
+      setCurrentAssigneeId(membership.assignee_id || null)
+      workspaceIdRef.current = membership.workspace_id
+      return membership.workspace_id
+    }
+
+    // No membership: try to auto-match by email to an existing assignee
+    if (email) {
+      const { data: matched } = await sb
+        .from('assignees')
+        .select('id, user_id')
+        .eq('email', email)
+        .maybeSingle()
+
+      if (matched) {
+        const wsId = matched.user_id
+        // Create membership + link assignee
+        await sb.from('workspace_members').insert({
+          workspace_id: wsId,
+          user_id: uid,
+          assignee_id: matched.id,
+          role: 'member',
+          invited_email: email,
+          accepted_at: new Date().toISOString(),
+        })
+        await sb.from('assignees').update({ auth_user_id: uid }).eq('id', matched.id)
+        setWorkspaceId(wsId)
+        setIsAdmin(false)
+        setCurrentAssigneeId(matched.id)
+        workspaceIdRef.current = wsId
+        return wsId
+      }
+    }
+
+    // Fallback: treat as admin of their own workspace (first-time setup)
+    setWorkspaceId(uid)
+    setIsAdmin(true)
+    setCurrentAssigneeId(null)
+    workspaceIdRef.current = uid
+    return uid
+  }, [])
+
   // ── Data loading ──────────────────────────────────────────
-  const loadData = useCallback(async (uid) => {
+  const loadData = useCallback(async (wsId) => {
     const [owners, assignees, projects, tasks, domainsRes, remindersRes] = await Promise.all([
-      sb.from('owners').select('*').eq('user_id', uid).order('created_at'),
-      sb.from('assignees').select('*').eq('user_id', uid).order('name'),
-      sb.from('projects').select('*').eq('user_id', uid).order('created_at'),
+      sb.from('owners').select('*').eq('user_id', wsId).order('created_at'),
+      sb.from('assignees').select('*').eq('user_id', wsId).order('name'),
+      sb.from('projects').select('*').eq('user_id', wsId).order('created_at'),
       sb.from('tasks')
         .select('*, task_assignees(assignee_id), task_projects(project_id)')
-        .eq('user_id', uid)
+        .eq('user_id', wsId)
         .order('created_at'),
-      sb.from('domains').select('*').eq('user_id', uid).order('created_at'),
-      sb.from('reminders').select('*').eq('user_id', uid).order('remind_at'),
+      sb.from('domains').select('*').eq('user_id', wsId).order('created_at'),
+      sb.from('reminders').select('*').eq('user_id', wsId).order('remind_at'),
     ])
 
-    // Auto-seed Work / Personal if this user has no domains yet
     let domainRows = domainsRes.data || []
     if (domainRows.length === 0) {
       await sb.from('domains').insert([
-        { user_id: uid, name: 'Work' },
-        { user_id: uid, name: 'Personal' },
+        { user_id: wsId, name: 'Work' },
+        { user_id: wsId, name: 'Personal' },
       ])
-      const { data: seeded } = await sb.from('domains').select('*').eq('user_id', uid).order('created_at')
+      const { data: seeded } = await sb.from('domains').select('*').eq('user_id', wsId).order('created_at')
       domainRows = seeded || []
     }
 
@@ -132,67 +203,83 @@ export function AppProvider({ children }) {
     })
   }, [])
 
+  const loadWorkspaceMembers = useCallback(async (wsId) => {
+    const { data: rows } = await sb
+      .from('workspace_members')
+      .select('*')
+      .eq('workspace_id', wsId)
+      .order('created_at')
+    setWorkspaceMembers((rows || []).map(mapWorkspaceMember))
+  }, [])
+
   // ── Auth ──────────────────────────────────────────────────
   useEffect(() => {
-    sb.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      if (session?.user) loadData(session.user.id)
+    sb.auth.getSession().then(async ({ data: { session } }) => {
+      const u = session?.user ?? null
+      setUser(u)
+      if (u) {
+        const wsId = await resolveWorkspace(u.id, u.email)
+        await Promise.all([loadData(wsId), loadWorkspaceMembers(wsId)])
+      }
       setAuthReady(true)
     })
-    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      if (session?.user) loadData(session.user.id)
-      else setData({ owners: [], assignees: [], projects: [], tasks: [], domains: [] })
+
+    const { data: { subscription } } = sb.auth.onAuthStateChange(async (_event, session) => {
+      const u = session?.user ?? null
+      setUser(u)
+      if (u) {
+        const wsId = await resolveWorkspace(u.id, u.email)
+        await Promise.all([loadData(wsId), loadWorkspaceMembers(wsId)])
+      } else {
+        setData({ owners: [], assignees: [], projects: [], tasks: [], domains: [], reminders: [] })
+        setWorkspaceMembers([])
+        setWorkspaceId(null)
+        setIsAdmin(false)
+        setCurrentAssigneeId(null)
+      }
     })
     return () => subscription.unsubscribe()
-  }, [loadData])
+  }, [resolveWorkspace, loadData, loadWorkspaceMembers])
 
   const getAssignee = id => data.assignees.find(a => a.id === id)
   const getProject  = id => data.projects.find(p => p.id === id)
   const getOwner    = id => data.owners.find(o => o.id === id)
 
   // ── Task mutations ────────────────────────────────────────
-  // updates may contain regular task fields AND optional:
-  //   assignee_ids: string[]   → replaces all rows in task_assignees
-  //   project_ids:  string[]   → replaces all rows in task_projects
   const updateTask = useCallback(async (taskId, updates) => {
     const { assignee_ids, project_ids, ...taskFields } = updates
+    const wsId = workspaceIdRef.current
 
-    // Rule: if assignees are being set on an Inbox task, promote to In Progress
     if (assignee_ids !== undefined && assignee_ids.length > 0 && !taskFields.status) {
       const current = data.tasks.find(t => t.id === taskId)
       if (current?.status === 'todo') taskFields.status = 'inprogress'
     }
 
-    // 1. Update main tasks table (if any scalar fields changed)
     if (Object.keys(taskFields).length > 0) {
-      const { error } = await sb.from('tasks').update(taskFields).eq('id', taskId).eq('user_id', user.id)
+      const { error } = await sb.from('tasks').update(taskFields).eq('id', taskId).eq('user_id', wsId)
       if (error) { showToast(error.message, 'error'); return false }
     }
 
-    // 2. Replace assignees in junction table
     if (assignee_ids !== undefined) {
-      await sb.from('task_assignees').delete().eq('task_id', taskId).eq('user_id', user.id)
+      await sb.from('task_assignees').delete().eq('task_id', taskId).eq('user_id', wsId)
       if (assignee_ids.length > 0) {
         const { error } = await sb.from('task_assignees').insert(
-          assignee_ids.map(aid => ({ task_id: taskId, assignee_id: aid, user_id: user.id }))
+          assignee_ids.map(aid => ({ task_id: taskId, assignee_id: aid, user_id: wsId }))
         )
         if (error) { showToast(error.message, 'error'); return false }
       }
     }
 
-    // 3. Replace projects in junction table
     if (project_ids !== undefined) {
-      await sb.from('task_projects').delete().eq('task_id', taskId).eq('user_id', user.id)
+      await sb.from('task_projects').delete().eq('task_id', taskId).eq('user_id', wsId)
       if (project_ids.length > 0) {
         const { error } = await sb.from('task_projects').insert(
-          project_ids.map(pid => ({ task_id: taskId, project_id: pid, user_id: user.id }))
+          project_ids.map(pid => ({ task_id: taskId, project_id: pid, user_id: wsId }))
         )
         if (error) { showToast(error.message, 'error'); return false }
       }
     }
 
-    // 4. Update local state
     const localUpdates = toLocalTask(taskFields)
     if (assignee_ids !== undefined) {
       localUpdates.assigneeIds = assignee_ids
@@ -204,24 +291,28 @@ export function AppProvider({ children }) {
     }
     setData(d => ({ ...d, tasks: d.tasks.map(t => t.id === taskId ? { ...t, ...localUpdates } : t) }))
     return true
-  }, [user, showToast])
+  }, [data.tasks, showToast])
 
   const createTask = useCallback(async (row) => {
+    const wsId = workspaceIdRef.current
     const { assignee_ids = [], project_ids = [], ...taskRow } = row
-    // Rule: if task is created with assignees, promote status from Inbox → In Progress
     if (assignee_ids.length > 0 && taskRow.status === 'todo') taskRow.status = 'inprogress'
+
+    // Always set workspace scoping and creator
+    taskRow.user_id    = wsId
+    taskRow.created_by = user?.id
+
     const { data: res, error } = await sb.from('tasks').insert(taskRow).select().single()
     if (error) { showToast(error.message, 'error'); return null }
 
-    // Insert junction records
     if (assignee_ids.length > 0) {
       await sb.from('task_assignees').insert(
-        assignee_ids.map(aid => ({ task_id: res.id, assignee_id: aid, user_id: row.user_id }))
+        assignee_ids.map(aid => ({ task_id: res.id, assignee_id: aid, user_id: wsId }))
       )
     }
     if (project_ids.length > 0) {
       await sb.from('task_projects').insert(
-        project_ids.map(pid => ({ task_id: res.id, project_id: pid, user_id: row.user_id }))
+        project_ids.map(pid => ({ task_id: res.id, project_id: pid, user_id: wsId }))
       )
     }
 
@@ -232,45 +323,89 @@ export function AppProvider({ children }) {
     })
     setData(d => ({ ...d, tasks: [...d.tasks, task] }))
     return task
-  }, [showToast])
+  }, [user, showToast])
 
   const deleteTask = useCallback(async (taskId) => {
-    await sb.from('task_assignees').delete().eq('task_id', taskId).eq('user_id', user.id)
-    await sb.from('task_projects').delete().eq('task_id', taskId).eq('user_id', user.id)
-    const { error } = await sb.from('tasks').delete().eq('id', taskId).eq('user_id', user.id)
+    const wsId = workspaceIdRef.current
+    await sb.from('task_assignees').delete().eq('task_id', taskId).eq('user_id', wsId)
+    await sb.from('task_projects').delete().eq('task_id', taskId).eq('user_id', wsId)
+    const { error } = await sb.from('tasks').delete().eq('id', taskId)
     if (error) { showToast(error.message, 'error'); return false }
     setData(d => ({ ...d, tasks: d.tasks.filter(t => t.id !== taskId) }))
     return true
-  }, [user, showToast])
+  }, [showToast])
 
   // ── Project mutations ─────────────────────────────────────
   const updateProject = useCallback(async (projectId, updates) => {
-    const { error } = await sb.from('projects').update(updates).eq('id', projectId).eq('user_id', user.id)
+    const wsId = workspaceIdRef.current
+    const { error } = await sb.from('projects').update(updates).eq('id', projectId).eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return false }
     setData(d => ({ ...d, projects: d.projects.map(p => p.id === projectId ? { ...p, ...toLocalProject(updates) } : p) }))
     return true
-  }, [user, showToast])
+  }, [showToast])
 
   const createProject = useCallback(async (row) => {
-    const { data: res, error } = await sb.from('projects').insert(row).select().single()
+    const wsId = workspaceIdRef.current
+    const projectRow = { ...row, user_id: wsId, created_by: user?.id }
+    const { data: res, error } = await sb.from('projects').insert(projectRow).select().single()
     if (error) { showToast(error.message, 'error'); return null }
     setData(d => ({ ...d, projects: [...d.projects, mapProject(res)] }))
     return mapProject(res)
-  }, [showToast])
+  }, [user, showToast])
 
   // ── Assignee mutations ────────────────────────────────────
   const updateAssignee = useCallback(async (assigneeId, updates) => {
-    const { error } = await sb.from('assignees').update(updates).eq('id', assigneeId).eq('user_id', user.id)
+    const wsId = workspaceIdRef.current
+    const { error } = await sb.from('assignees').update(updates).eq('id', assigneeId).eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return false }
     setData(d => ({ ...d, assignees: d.assignees.map(a => a.id === assigneeId ? { ...a, ...toLocalAssignee(updates) } : a) }))
     return true
-  }, [user, showToast])
+  }, [showToast])
 
   const createAssignee = useCallback(async (row) => {
-    const { data: res, error } = await sb.from('assignees').insert(row).select().single()
+    const wsId = workspaceIdRef.current
+    const { data: res, error } = await sb.from('assignees').insert({ ...row, user_id: wsId }).select().single()
     if (error) { showToast(error.message, 'error'); return null }
     setData(d => ({ ...d, assignees: [...d.assignees, mapAssignee(res)] }))
     return mapAssignee(res)
+  }, [showToast])
+
+  // ── Workspace member mutations ────────────────────────────
+  // Links an existing assignee as a workspace member (admin action)
+  const addWorkspaceMember = useCallback(async (assigneeId) => {
+    const wsId = workspaceIdRef.current
+    const assignee = data.assignees.find(a => a.id === assigneeId)
+    if (!assignee) return null
+
+    const { data: existing } = await sb
+      .from('workspace_members')
+      .select('id')
+      .eq('workspace_id', wsId)
+      .eq('assignee_id', assigneeId)
+      .maybeSingle()
+    if (existing) { showToast('Already a member', 'error'); return null }
+
+    const { data: res, error } = await sb.from('workspace_members').insert({
+      workspace_id: wsId,
+      user_id: assignee.authUserId || assigneeId, // placeholder if no auth account yet
+      assignee_id: assigneeId,
+      role: 'member',
+      invited_email: assignee.email,
+    }).select().single()
+
+    if (error) { showToast(error.message, 'error'); return null }
+    const member = mapWorkspaceMember(res)
+    setWorkspaceMembers(ms => [...ms, member])
+    showToast(`${assignee.name} added to workspace`, 'success')
+    return member
+  }, [data.assignees, showToast])
+
+  const removeWorkspaceMember = useCallback(async (memberId) => {
+    const { error } = await sb.from('workspace_members').delete().eq('id', memberId)
+    if (error) { showToast(error.message, 'error'); return false }
+    setWorkspaceMembers(ms => ms.filter(m => m.id !== memberId))
+    showToast('Member removed', 'success')
+    return true
   }, [showToast])
 
   // ── File mutations ────────────────────────────────────────
@@ -285,56 +420,59 @@ export function AppProvider({ children }) {
     : 'task_id'
 
   const fetchFilesForAssignee = useCallback(async (assigneeId) => {
+    const wsId = workspaceIdRef.current
     const { data: rows, error } = await sb
       .from('assignee_files')
       .select('file_id, files(*)')
       .eq('assignee_id', assigneeId)
-      .eq('user_id', user.id)
+      .eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return [] }
     return (rows || []).map(r => r.files).filter(Boolean)
-  }, [user, showToast])
+  }, [showToast])
 
   const fetchFilesForProject = useCallback(async (projectId) => {
+    const wsId = workspaceIdRef.current
     const { data: rows, error } = await sb
       .from('project_files')
       .select('file_id, files(*)')
       .eq('project_id', projectId)
-      .eq('user_id', user.id)
+      .eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return [] }
     return (rows || []).map(r => r.files).filter(Boolean)
-  }, [user, showToast])
+  }, [showToast])
 
   const fetchFilesForTask = useCallback(async (taskId) => {
+    const wsId = workspaceIdRef.current
     const { data: rows, error } = await sb
       .from('task_files')
       .select('file_id, files(*)')
       .eq('task_id', taskId)
-      .eq('user_id', user.id)
+      .eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return [] }
     return (rows || []).map(r => r.files).filter(Boolean)
-  }, [user, showToast])
+  }, [showToast])
 
   const addFileToEntity = useCallback(async (type, entityId, fileData) => {
-    // 1. Create the file record
+    const wsId = workspaceIdRef.current
     const { data: file, error: fileErr } = await sb
       .from('files')
-      .insert({ ...fileData, user_id: user.id })
+      .insert({ ...fileData, user_id: wsId, created_by: user?.id })
       .select()
       .single()
     if (fileErr) { showToast(fileErr.message, 'error'); return null }
 
-    // 2. Create the junction record
     const table = junctionTable(type)
     const fk    = junctionFk(type)
     const { error: jErr } = await sb
       .from(table)
-      .insert({ [fk]: entityId, file_id: file.id, user_id: user.id })
+      .insert({ [fk]: entityId, file_id: file.id, user_id: wsId })
     if (jErr) { showToast(jErr.message, 'error'); return null }
 
     return file
   }, [user, showToast])
 
   const removeFileFromEntity = useCallback(async (type, entityId, fileId) => {
+    const wsId = workspaceIdRef.current
     const table = junctionTable(type)
     const fk    = junctionFk(type)
     const { error } = await sb
@@ -342,41 +480,46 @@ export function AppProvider({ children }) {
       .delete()
       .eq(fk, entityId)
       .eq('file_id', fileId)
-      .eq('user_id', user.id)
+      .eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return false }
     return true
-  }, [user, showToast])
+  }, [showToast])
 
   const setFileArchived = useCallback(async (fileId, archived) => {
+    const wsId = workspaceIdRef.current
     const { error } = await sb
       .from('files')
       .update({ archived })
       .eq('id', fileId)
-      .eq('user_id', user.id)
+      .eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return false }
     return true
-  }, [user, showToast])
+  }, [showToast])
 
   // ── Domain mutations ──────────────────────────────────────
   const createDomain = useCallback(async (name) => {
-    const { data: res, error } = await sb.from('domains').insert({ name: name.trim(), user_id: user.id }).select().single()
+    const wsId = workspaceIdRef.current
+    const { data: res, error } = await sb.from('domains').insert({ name: name.trim(), user_id: wsId }).select().single()
     if (error) { showToast(error.message, 'error'); return null }
     const d = mapDomain(res)
     setData(s => ({ ...s, domains: [...s.domains, d] }))
     return d
-  }, [user, showToast])
+  }, [showToast])
 
   const deleteDomain = useCallback(async (domainId) => {
-    const { error } = await sb.from('domains').delete().eq('id', domainId).eq('user_id', user.id)
+    const wsId = workspaceIdRef.current
+    const { error } = await sb.from('domains').delete().eq('id', domainId).eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return false }
     setData(s => ({ ...s, domains: s.domains.filter(d => d.id !== domainId) }))
     return true
-  }, [user, showToast])
+  }, [showToast])
 
-  // ── Reminder mutations ────────────────────────────────────────
+  // ── Reminder mutations ────────────────────────────────────
   const createReminder = useCallback(async ({ entityType, entityId, remindAt, recurrence = 'none', notes = '' }) => {
+    const wsId = workspaceIdRef.current
     const { data: res, error } = await sb.from('reminders').insert({
-      user_id: user.id, entity_type: entityType, entity_id: entityId,
+      user_id: wsId, created_by: user?.id,
+      entity_type: entityType, entity_id: entityId,
       remind_at: remindAt, recurrence, notes,
     }).select().single()
     if (error) { showToast(error.message, 'error'); return null }
@@ -388,40 +531,42 @@ export function AppProvider({ children }) {
   const updateReminder = useCallback(async (reminderId, { remindAt, recurrence, notes }) => {
     const { error } = await sb.from('reminders').update({
       remind_at: remindAt, recurrence, notes,
-    }).eq('id', reminderId).eq('user_id', user.id)
+    }).eq('id', reminderId)
     if (error) { showToast(error.message, 'error'); return false }
     setData(d => ({ ...d, reminders: d.reminders.map(r => r.id === reminderId ? { ...r, remindAt, recurrence, notes } : r) }))
     return true
-  }, [user, showToast])
+  }, [showToast])
 
   const deleteReminder = useCallback(async (reminderId) => {
-    const { error } = await sb.from('reminders').delete().eq('id', reminderId).eq('user_id', user.id)
+    const { error } = await sb.from('reminders').delete().eq('id', reminderId)
     if (error) { showToast(error.message, 'error'); return false }
     setData(d => ({ ...d, reminders: d.reminders.filter(r => r.id !== reminderId) }))
     return true
-  }, [user, showToast])
+  }, [showToast])
 
-  // Sets one assignee as the owner; clears is_owner on all others for this user
+  // ── Owner assignee ────────────────────────────────────────
   const setOwnerAssignee = useCallback(async (assigneeId) => {
-    // Clear existing owner(s) first
-    await sb.from('assignees').update({ is_owner: false }).eq('user_id', user.id).eq('is_owner', true)
-    // Set the new owner
-    const { error } = await sb.from('assignees').update({ is_owner: true }).eq('id', assigneeId).eq('user_id', user.id)
+    const wsId = workspaceIdRef.current
+    await sb.from('assignees').update({ is_owner: false }).eq('user_id', wsId).eq('is_owner', true)
+    const { error } = await sb.from('assignees').update({ is_owner: true }).eq('id', assigneeId).eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return false }
     setData(d => ({
       ...d,
       assignees: d.assignees.map(a => ({ ...a, isOwner: a.id === assigneeId }))
     }))
     return true
-  }, [user, showToast])
+  }, [showToast])
 
   return (
     <AppContext.Provider value={{
       user, authReady, data, loadData,
+      workspaceId, isAdmin, currentAssigneeId,
+      workspaceMembers,
       getAssignee, getProject, getOwner,
       updateTask, createTask, deleteTask,
       updateProject, createProject,
       updateAssignee, createAssignee, setOwnerAssignee,
+      addWorkspaceMember, removeWorkspaceMember, loadWorkspaceMembers,
       fetchFilesForAssignee, fetchFilesForProject, fetchFilesForTask,
       addFileToEntity, removeFileFromEntity, setFileArchived,
       createDomain, deleteDomain,

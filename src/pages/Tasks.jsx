@@ -154,6 +154,9 @@ function TaskRow({ task, selected, onToggleSelect, columns, menuItems }) {
           {fmt(task.due)}
         </td>
       )}
+      {columns.includes('created') && (
+        <td style={{ fontSize: 12, color: 'var(--slate-500)' }}>{fmt(task.createdAt)}</td>
+      )}
       {columns.includes('roadmap') && (
         <td>{task.roadmap ? '🗺' : ''}</td>
       )}
@@ -471,12 +474,12 @@ export default function Tasks() {
 
   // ── Column definitions per tab ─────────────────────────────
   const TAB_COLUMNS = {
-    inbox:      ['project', 'assignees', 'due'],
+    inbox:      ['project', 'assignees', 'due', 'created'],
     todo:       ['project', 'due'],
     waiting:    ['project', 'assignees', 'due'],
     unassigned: ['project', 'status', 'due'],
     roadmap:    ['project', 'assignees', 'due'],
-    all:        ['project', 'assignees', 'status', 'due', 'roadmap'],
+    all:        ['project', 'assignees', 'status', 'due', 'created', 'roadmap'],
   }
   const columns = TAB_COLUMNS[activeTab] || []
 
@@ -591,6 +594,7 @@ export default function Tasks() {
       {columns.includes('assignees') && <th style={{ width: 180 }}>ASSIGNEES</th>}
       {columns.includes('status')    && <th style={{ width: 130 }}>STATUS</th>}
       {columns.includes('due')       && <th style={{ width: 110 }}>DUE</th>}
+      {columns.includes('created')   && <th style={{ width: 110 }}>CREATED</th>}
       {columns.includes('roadmap')   && <th style={{ width: 36 }}>🗺</th>}
       <th style={{ width: 44 }}></th>
     </>

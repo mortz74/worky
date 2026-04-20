@@ -18,7 +18,7 @@ const NavIcon = ({ path }) => {
 }
 
 export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }) {
-  const { user, data } = useApp()
+  const { user, data, isAdmin, currentAssigneeId } = useApp()
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true')
 
@@ -28,10 +28,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
     localStorage.setItem('sidebar-collapsed', String(next))
   }
 
-  const initials = user?.user_metadata?.initials
+  // Prefer the linked assignee profile for display; fall back to auth metadata
+  const currentAssignee = currentAssigneeId ? data.assignees.find(a => a.id === currentAssigneeId) : null
+  const initials = currentAssignee?.initials
+    || user?.user_metadata?.initials
     || (user?.email ? user.email.slice(0, 2).toUpperCase() : 'AK')
-  const displayName = user?.user_metadata?.name || user?.email || 'User'
-  const role = 'Owner'
+  const displayName = currentAssignee?.name || user?.user_metadata?.name || user?.email || 'User'
+  const role = isAdmin ? 'Admin' : 'Member'
 
   const activeTasks    = data.tasks.filter(t => t.active && t.status !== 'done').length
   const activeProjects = data.projects.filter(p => p.status === 'active').length
@@ -85,7 +88,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
 
       <div className="sidebar-footer">
         <div className="sidebar-user">
-          <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: '#3b82f6', color: '#fff', flexShrink: 0 }}>
+          <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: currentAssignee?.color || '#3b82f6', color: '#fff', flexShrink: 0 }}>
             {initials}
           </div>
           {!isCollapsed && (
