@@ -213,30 +213,25 @@ export function AppProvider({ children }) {
   }, [])
 
   // ── Auth ──────────────────────────────────────────────────
+  // Use only onAuthStateChange (not getSession) to avoid concurrent lock contention
+  // on the worky-auth storage key. INITIAL_SESSION fires on mount with existing session.
   useEffect(() => {
-    sb.auth.getSession().then(async ({ data: { session } }) => {
+    const { data: { subscription } } = sb.auth.onAuthStateChange(async (event, session) => {
       const u = session?.user ?? null
       setUser(u)
-      if (u) {
-        const wsId = await resolveWorkspace(u.id, u.email)
-        await Promise.all([loadData(wsId), loadWorkspaceMembers(wsId)])
-      }
-      setAuthReady(true)
-    })
 
-    const { data: { subscription } } = sb.auth.onAuthStateChange(async (_event, session) => {
-      const u = session?.user ?? null
-      setUser(u)
-      if (u) {
+      if (u && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
         const wsId = await resolveWorkspace(u.id, u.email)
         await Promise.all([loadData(wsId), loadWorkspaceMembers(wsId)])
-      } else {
+      } else if (event === 'SIGNED_OUT' || (!u && event === 'INITIAL_SESSION')) {
         setData({ owners: [], assignees: [], projects: [], tasks: [], domains: [], reminders: [] })
         setWorkspaceMembers([])
         setWorkspaceId(null)
         setIsAdmin(false)
         setCurrentAssigneeId(null)
       }
+
+      setAuthReady(true)
     })
     return () => subscription.unsubscribe()
   }, [resolveWorkspace, loadData, loadWorkspaceMembers])
