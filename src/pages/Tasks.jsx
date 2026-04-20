@@ -359,7 +359,7 @@ function AddTaskModal({ open, onClose }) {
 
 // ── Main Tasks Page ────────────────────────────────────────
 export default function Tasks() {
-  const { data, updateTask, deleteTask, createReminder, showToast } = useApp()
+  const { data, updateTask, deleteTask, createReminder, showToast, currentAssigneeId } = useApp()
   const [searchParams] = useSearchParams()
 
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'inbox')
@@ -407,7 +407,7 @@ export default function Tasks() {
     setSelected(new Set())
   }, [activeTab])
 
-  const owner = data.assignees.find(a => a.isOwner)
+  const owner = data.assignees.find(a => a.id === currentAssigneeId)
 
   // ── Tab-level filter logic ─────────────────────────────────
   const filterByTab = (t) => {

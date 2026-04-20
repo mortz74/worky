@@ -5,30 +5,17 @@ import Avatar from '../components/Avatar'
 export default function Settings() {
   const {
     data, isAdmin, workspaceMembers,
-    setOwnerAssignee, createDomain, deleteDomain,
+    createDomain, deleteDomain,
     addWorkspaceMember, removeWorkspaceMember,
     showToast,
   } = useApp()
 
-  const [activeTab, setActiveTab] = useState('owner')
+  const [activeTab, setActiveTab] = useState('domains')
   const [newDomain, setNewDomain] = useState('')
   const [addingDomain, setAddingDomain] = useState(false)
   const [addingMember, setAddingMember] = useState(false)
   const [selectedNewMember, setSelectedNewMember] = useState('')
   const [removingId, setRemovingId] = useState(null)
-
-  const currentOwner = data.assignees.find(a => a.isOwner)
-  const [selected, setSelected] = useState(currentOwner?.id || '')
-  const [saving, setSaving] = useState(false)
-
-  const handleSave = async () => {
-    if (!selected) return
-    setSaving(true)
-    await setOwnerAssignee(selected)
-    setSaving(false)
-    const name = data.assignees.find(a => a.id === selected)?.name || 'Assignee'
-    showToast(`${name} set as Owner`, 'success')
-  }
 
   const handleAddDomain = async () => {
     if (!newDomain.trim()) return
@@ -62,8 +49,8 @@ export default function Settings() {
   const invitableAssignees = data.assignees.filter(a => !memberAssigneeIds.has(a.id))
 
   const tabs = isAdmin
-    ? [{ id: 'owner', label: 'Owner' }, { id: 'domains', label: 'Domains' }, { id: 'team', label: 'Team' }]
-    : [{ id: 'owner', label: 'Owner' }, { id: 'domains', label: 'Domains' }]
+    ? [{ id: 'domains', label: 'Domains' }, { id: 'team', label: 'Team' }]
+    : [{ id: 'domains', label: 'Domains' }]
 
   return (
     <div className="page active">
@@ -91,54 +78,6 @@ export default function Settings() {
               </button>
             ))}
           </div>
-
-          {/* Owner tab */}
-          {activeTab === 'owner' && (
-            <div className="card" style={{ padding: 24 }}>
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--slate-900)', marginBottom: 4 }}>Owner</div>
-                <div style={{ fontSize: 13, color: 'var(--slate-500)' }}>
-                  The owner is highlighted across the app. Only one assignee can be the owner at a time.
-                </div>
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ marginBottom: 6 }}>Select Owner</label>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <select
-                    className="form-select"
-                    value={selected}
-                    onChange={e => setSelected(e.target.value)}
-                    style={{ flex: 1, fontSize: 14 }}
-                  >
-                    <option value="">— Select an assignee —</option>
-                    {data.assignees
-                      .slice().sort((a, b) => a.name.localeCompare(b.name))
-                      .map(a => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}{a.isOwner ? ' ★ (current owner)' : ''}
-                        </option>
-                      ))
-                    }
-                  </select>
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleSave}
-                    disabled={saving || !selected || selected === currentOwner?.id}
-                  >
-                    {saving ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
-              </div>
-              {currentOwner && (
-                <div style={{ marginTop: 16, padding: '10px 14px', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <svg viewBox="0 0 20 16" fill="#f59e0b" width="15" height="12"><path d="M1 14h18v2H1v-2zm1-2L3 4l4 4 3-6 3 6 4-4 1 8H2z"/></svg>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>
-                    Current owner: {currentOwner.name}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Domains tab */}
           {activeTab === 'domains' && (

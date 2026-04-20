@@ -14,8 +14,8 @@ const fmt = d => { if (!d) return '—'; const dt = new Date(d); return dt.toLoc
 const isOverdue = d => d && new Date(d) < new Date()
 
 function DashboardTaskRow({ task, onEdit, onMenuAction, onAddAssignee, onAddDueDate, onAddReminder, onDelete }) {
-  const { data, updateTask, showToast } = useApp()
-  const owner = data.assignees.find(a => a.isOwner)
+  const { data, updateTask, showToast, currentAssigneeId } = useApp()
+  const owner = data.assignees.find(a => a.id === currentAssigneeId)
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
@@ -116,7 +116,7 @@ function DashboardTaskRow({ task, onEdit, onMenuAction, onAddAssignee, onAddDueD
 }
 
 export default function Dashboard() {
-  const { data, updateTask, deleteTask, createReminder, showToast } = useApp()
+  const { data, updateTask, deleteTask, createReminder, showToast, currentAssigneeId } = useApp()
   const navigate = useNavigate()
   const today = new Date(); today.setHours(0,0,0,0)
   const sevenDaysAgo = new Date(today); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
