@@ -123,11 +123,8 @@ export function AppProvider({ children }) {
       .eq('user_id', uid)
       .maybeSingle()
 
-    console.log('[Worky] resolveWorkspace', { uid, email, membership, wmErr: wmErr?.message })
-
     // If workspace_members query errored (table issue, RLS, etc.) fall back immediately
     if (wmErr) {
-      console.warn('[Worky] workspace_members unavailable, falling back to own workspace:', wmErr.message, wmErr.code)
       setWorkspaceId(uid)
       setIsAdmin(true)
       setCurrentAssigneeId(null)
