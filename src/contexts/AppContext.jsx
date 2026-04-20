@@ -140,8 +140,32 @@ export function AppProvider({ children }) {
       return membership.workspace_id
     }
 
-    // No membership row yet: try to auto-match by email to an existing assignee
+    // No membership by user_id — check for a pending invite row by email
     if (email) {
+      const { data: pending } = await sb
+        .from('workspace_members')
+        .select('*')
+        .eq('invited_email', email)
+        .is('user_id', null)
+        .maybeSingle()
+
+      if (pending) {
+        // Accept the invite: fill in user_id and accepted_at, link assignee to auth account
+        await sb.from('workspace_members').update({
+          user_id: uid,
+          accepted_at: new Date().toISOString(),
+        }).eq('id', pending.id)
+        if (pending.assignee_id) {
+          await sb.from('assignees').update({ auth_user_id: uid }).eq('id', pending.assignee_id)
+        }
+        setWorkspaceId(pending.workspace_id)
+        setIsAdmin(pending.role === 'admin')
+        setCurrentAssigneeId(pending.assignee_id || null)
+        workspaceIdRef.current = pending.workspace_id
+        return pending.workspace_id
+      }
+
+      // No pending invite either — try to auto-match by email to an existing assignee
       const { data: matched } = await sb
         .from('assignees')
         .select('id, user_id')
@@ -394,7 +418,7 @@ export function AppProvider({ children }) {
 
     const { data: res, error } = await sb.from('workspace_members').insert({
       workspace_id: wsId,
-      user_id: assignee.authUserId || assigneeId, // placeholder if no auth account yet
+      user_id: assignee.authUserId || null,
       assignee_id: assigneeId,
       role: 'member',
       invited_email: assignee.email,
