@@ -222,28 +222,34 @@ export function AppProvider({ children }) {
   }, [])
 
   // ── Auth ──────────────────────────────────────────────────
-  // Use only onAuthStateChange (not getSession) to avoid concurrent lock contention
-  // on the worky-auth storage key. INITIAL_SESSION fires on mount with existing session.
+  // onAuthStateChange only sets user state — no DB queries inside the callback.
+  // DB queries inside auth callbacks compete for the worky-auth storage lock and
+  // produce "lock was stolen" errors. Data loading is handled in a separate effect.
   useEffect(() => {
-    const { data: { subscription } } = sb.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
       const u = session?.user ?? null
       setUser(u)
-
-      if (u && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
-        const wsId = await resolveWorkspace(u.id, u.email)
-        await Promise.all([loadData(wsId), loadWorkspaceMembers(wsId)])
-      } else if (event === 'SIGNED_OUT' || (!u && event === 'INITIAL_SESSION')) {
+      if (!u) {
         setData({ owners: [], assignees: [], projects: [], tasks: [], domains: [], reminders: [] })
         setWorkspaceMembers([])
         setWorkspaceId(null)
         setIsAdmin(false)
         setCurrentAssigneeId(null)
       }
-
       setAuthReady(true)
     })
     return () => subscription.unsubscribe()
-  }, [resolveWorkspace, loadData, loadWorkspaceMembers])
+  }, [])
+
+  // Load data once user is known — runs after auth callback releases its lock
+  useEffect(() => {
+    if (!user) return
+    const init = async () => {
+      const wsId = await resolveWorkspace(user.id, user.email)
+      await Promise.all([loadData(wsId), loadWorkspaceMembers(wsId)])
+    }
+    init()
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const getAssignee = id => data.assignees.find(a => a.id === id)
   const getProject  = id => data.projects.find(p => p.id === id)
