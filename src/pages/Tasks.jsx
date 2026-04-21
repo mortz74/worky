@@ -9,6 +9,7 @@ import MultiSelect from '../components/MultiSelect'
 import EditTaskModal from '../components/EditTaskModal'
 import QuickTaskModal from '../components/QuickTaskModal'
 import AddAssigneeModal from '../components/AddAssigneeModal'
+import AddProjectModal from '../components/AddProjectModal'
 import AddDueDateModal from '../components/AddDueDateModal'
 import AddReminderModal from '../components/AddReminderModal'
 
@@ -379,7 +380,8 @@ export default function Tasks() {
   const splitRef                   = useRef(null)
   const [editTask, setEditTask] = useState(null)
   const [addAssigneeTask, setAddAssigneeTask] = useState(null)
-  const [addDueDateTask, setAddDueDateTask]     = useState(null)
+  const [addProjectTask, setAddProjectTask]   = useState(null)
+  const [addDueDateTask, setAddDueDateTask]   = useState(null)
   const [addReminderTask, setAddReminderTask]   = useState(null)
   const [deleteTaskItem, setDeleteTaskItem]   = useState(null)
 
@@ -510,6 +512,12 @@ export default function Tasks() {
     setAddAssigneeTask(null)
   }
 
+  const handleProjectSave = async (task, ids) => {
+    await updateTask(task.id, { project_ids: ids })
+    showToast('Projects updated', 'success')
+    setAddProjectTask(null)
+  }
+
   const handleDueDateSave = async (task, due) => {
     await updateTask(task.id, { due_date: due })
     showToast(due ? 'Due date set' : 'Due date cleared', 'success')
@@ -531,6 +539,7 @@ export default function Tasks() {
       { icon: '▶️', label: 'Mark In Progress', action: () => { updateTask(task.id, { status: 'inprogress' }); showToast('Marked In Progress', 'success') } },
       { icon: '👑', label: `Assign to ${ownerName}`, action: () => assignToOwner(task) },
       { icon: '👤', label: 'Add Assignee', action: () => setAddAssigneeTask(task) },
+      { icon: '📁', label: 'Update Project', action: () => setAddProjectTask(task) },
       { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
       { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },
       { divider: true },
@@ -544,6 +553,7 @@ export default function Tasks() {
       { icon: '✅', label: 'Mark Done', action: () => { updateTask(task.id, { status: 'done', active: false }); showToast('Marked Done', 'success') } },
       { divider: true },
       { icon: '👤', label: 'Add / Change Assignee', action: () => setAddAssigneeTask(task) },
+      { icon: '📁', label: 'Update Project', action: () => setAddProjectTask(task) },
       { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
       { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },
       { divider: true },
@@ -558,6 +568,7 @@ export default function Tasks() {
       { divider: true },
       ...(owner ? [{ icon: '🙋', label: `Assign to ${ownerName}`, action: () => { updateTask(task.id, { status: 'inprogress', assignee_ids: [owner.id] }); showToast(`Assigned to ${ownerName}`, 'success') } }] : []),
       { icon: '👤', label: 'Add / Change Assignee', action: () => setAddAssigneeTask(task) },
+      { icon: '📁', label: 'Update Project', action: () => setAddProjectTask(task) },
       { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
       { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },
       { divider: true },
@@ -571,6 +582,7 @@ export default function Tasks() {
       { icon: '✅', label: 'Mark Done', action: () => { updateTask(task.id, { status: 'done', active: false }); showToast('Marked Done', 'success') } },
       { divider: true },
       { icon: '👤', label: 'Add / Change Assignee', action: () => setAddAssigneeTask(task) },
+      { icon: '📁', label: 'Update Project', action: () => setAddProjectTask(task) },
       { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
       { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },
       { divider: true },
@@ -586,6 +598,7 @@ export default function Tasks() {
       { icon: '✅', label: 'Mark Done', action: () => { updateTask(task.id, { status: 'done', active: false }); showToast('Marked Done', 'success') } },
       { divider: true },
       { icon: '👤', label: 'Add / Change Assignee', action: () => setAddAssigneeTask(task) },
+      { icon: '📁', label: 'Update Project', action: () => setAddProjectTask(task) },
       { icon: '📅', label: 'Add Due Date', action: () => setAddDueDateTask(task) },
       { icon: '🔔', label: 'Add Reminder', action: () => setAddReminderTask(task) },
       { divider: true },
@@ -781,6 +794,13 @@ export default function Tasks() {
         open={!!addAssigneeTask}
         onClose={() => setAddAssigneeTask(null)}
         onSave={(ids) => handleAssigneeSave(addAssigneeTask, ids)}
+      />
+
+      <AddProjectModal
+        task={addProjectTask}
+        open={!!addProjectTask}
+        onClose={() => setAddProjectTask(null)}
+        onSave={(ids) => handleProjectSave(addProjectTask, ids)}
       />
 
       <AddDueDateModal

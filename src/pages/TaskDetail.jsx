@@ -6,6 +6,23 @@ import MultiSelect from '../components/MultiSelect'
 import FileList from '../components/FileList'
 import AddFileModal from '../components/AddFileModal'
 import ReminderSection from '../components/ReminderSection'
+import Modal from '../components/Modal'
+
+function DeleteConfirmModal({ taskName, open, onClose, onConfirm }) {
+  return (
+    <Modal open={open} onClose={onClose} title="Delete Task"
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" style={{ background: '#ef4444' }} onClick={onConfirm}>Delete</button>
+        </>
+      }>
+      <p style={{ color: 'var(--slate-600)', fontSize: 14, margin: 0 }}>
+        Are you sure you want to delete <strong>"{taskName}"</strong>? This action cannot be undone.
+      </p>
+    </Modal>
+  )
+}
 
 const fmt = d => { if (!d) return '—'; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 const isOverdue = d => { if (!d) return false; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day) < new Date() }
@@ -15,7 +32,8 @@ export default function TaskDetail() {
   const navigate = useNavigate()
   const location = useLocation()
   const returnTab = location.state?.returnTab
-  const { data, updateTask, showToast, fetchFilesForTask, addFileToEntity, removeFileFromEntity, setFileArchived } = useApp()
+  const { data, updateTask, deleteTask, showToast, fetchFilesForTask, addFileToEntity, removeFileFromEntity, setFileArchived } = useApp()
+  const [showDelete, setShowDelete] = useState(false)
   const t = data.tasks.find(t => t.id === id)
   const [files, setFiles]             = useState([])
   const [showAddFile, setShowAddFile] = useState(false)
@@ -56,7 +74,10 @@ export default function TaskDetail() {
     <div className="page active">
       <div className="page-header">
         <span className="page-title" style={{ fontSize: 15 }}>{t.name}</span>
-        <button className="btn btn-secondary" onClick={() => navigate(returnTab ? `/tasks?tab=${returnTab}` : -1)}>← Back</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" onClick={() => navigate(returnTab ? `/tasks?tab=${returnTab}` : -1)}>← Back</button>
+          <button className="btn btn-secondary" style={{ color: '#ef4444', borderColor: '#ef4444' }} onClick={() => setShowDelete(true)}>Delete</button>
+        </div>
       </div>
       <div className="page-content">
         <div className="detail-grid">
@@ -232,6 +253,16 @@ export default function TaskDetail() {
         </div>
       </div>
 
+      <DeleteConfirmModal
+        taskName={t.name}
+        open={showDelete}
+        onClose={() => setShowDelete(false)}
+        onConfirm={async () => {
+          await deleteTask(id)
+          showToast('Task deleted', 'success')
+          navigate(returnTab ? `/tasks?tab=${returnTab}` : '/tasks')
+        }}
+      />
     </div>
   )
 }
