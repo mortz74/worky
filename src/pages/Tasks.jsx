@@ -49,7 +49,7 @@ function AvatarStack({ assigneeIds = [], size = 24 }) {
 }
 
 // ── TaskRow ────────────────────────────────────────────────
-function TaskRow({ task, selected, onToggleSelect, columns, menuItems }) {
+function TaskRow({ task, selected, onToggleSelect, columns, menuItems, activeTab }) {
   const { data } = useApp()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -111,7 +111,7 @@ function TaskRow({ task, selected, onToggleSelect, columns, menuItems }) {
       <td onClick={e => e.stopPropagation()}>
         <input type="checkbox" checked={selected} onChange={() => onToggleSelect(task.id)} />
       </td>
-      <td style={{ fontWeight: 600, cursor: 'pointer', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => navigate(`/tasks/${task.id}`)}>
+      <td style={{ fontWeight: 600, cursor: 'pointer', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => navigate(`/tasks/${task.id}`, { state: { returnTab: activeTab } })}>
         {task.name}
         {hasReminder && <span title="Has reminder" style={{ marginLeft: 6, fontSize: 12 }}>🔔</span>}
       </td>
@@ -749,6 +749,7 @@ export default function Tasks() {
                     onToggleSelect={toggleSelect}
                     columns={columns}
                     menuItems={getMenuItems(t)}
+                    activeTab={activeTab}
                   />
                 ))}
               </tbody>

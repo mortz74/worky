@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../contexts/AppContext'
 import Avatar from '../components/Avatar'
 import MultiSelect from '../components/MultiSelect'
@@ -13,6 +13,8 @@ const isOverdue = d => { if (!d) return false; const [y,m,day] = d.slice(0,10).s
 export default function TaskDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTab = location.state?.returnTab
   const { data, updateTask, showToast, fetchFilesForTask, addFileToEntity, removeFileFromEntity, setFileArchived } = useApp()
   const t = data.tasks.find(t => t.id === id)
   const [files, setFiles]             = useState([])
@@ -54,7 +56,7 @@ export default function TaskDetail() {
     <div className="page active">
       <div className="page-header">
         <span className="page-title" style={{ fontSize: 15 }}>{t.name}</span>
-        <button className="btn btn-secondary" onClick={() => navigate(-1)}>← Back</button>
+        <button className="btn btn-secondary" onClick={() => navigate(returnTab ? `/tasks?tab=${returnTab}` : -1)}>← Back</button>
       </div>
       <div className="page-content">
         <div className="detail-grid">
