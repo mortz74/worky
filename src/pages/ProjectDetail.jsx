@@ -95,7 +95,7 @@ function DeleteConfirmModal({ task, open, onClose, onConfirm }) {
 export default function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data, updateTask, updateProject, deleteTask, createReminder, showToast, fetchFilesForProject, addFileToEntity, removeFileFromEntity, setFileArchived } = useApp()
+  const { data, updateTask, updateProject, deleteTask, createReminder, showToast, fetchFilesForProject, addFileToEntity, removeFileFromEntity, setFileArchived, isAdmin, projectCollaborators, addProjectCollaborator, removeProjectCollaborator, setProjectTaskVisibility } = useApp()
   const [activeTab, setActiveTab]     = useState('tasks')
   const [files, setFiles]             = useState([])
   const [showAddFile, setShowAddFile] = useState(false)
@@ -305,52 +305,67 @@ export default function ProjectDetail() {
               onSave={handleAddFile}
             />
           </div>
-          <div className="card" style={{ padding: 18, height: 'fit-content' }}>
-            <div className="section-title">Details</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="card" style={{ padding: 18, height: 'fit-content' }}>
+              <div className="section-title">Details</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-              <div>
-                <div className="form-label" style={{ marginBottom: 4 }}>Status</div>
-                <select className="form-select" style={{ fontSize: 13 }}
-                  value={p.status || ''}
-                  onChange={e => saveProject({ status: e.target.value }, 'Status updated')}>
-                  <option value="active">Active</option>
-                  <option value="inprogress">In Progress</option>
-                  <option value="review">In Review</option>
-                  <option value="blocked">Blocked</option>
-                  <option value="done">Done</option>
-                  <option value="archive">Archive</option>
-                </select>
+                <div>
+                  <div className="form-label" style={{ marginBottom: 4 }}>Status</div>
+                  <select className="form-select" style={{ fontSize: 13 }}
+                    value={p.status || ''}
+                    onChange={e => saveProject({ status: e.target.value }, 'Status updated')}>
+                    <option value="active">Active</option>
+                    <option value="inprogress">In Progress</option>
+                    <option value="review">In Review</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="done">Done</option>
+                    <option value="archive">Archive</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="form-label" style={{ marginBottom: 4 }}>Start</div>
+                  <input
+                    type="date"
+                    className="form-input"
+                    style={{ fontSize: 13, padding: '5px 8px' }}
+                    value={p.start ? p.start.slice(0, 10) : ''}
+                    onChange={e => saveProject({ start_date: e.target.value || null }, 'Start date updated')}
+                  />
+                </div>
+
+                <div>
+                  <div className="form-label" style={{ marginBottom: 4 }}>Due</div>
+                  <input
+                    type="date"
+                    className="form-input"
+                    style={{ fontSize: 13, padding: '5px 8px' }}
+                    value={p.due ? p.due.slice(0, 10) : ''}
+                    onChange={e => saveProject({ due_date: e.target.value || null }, 'Due date updated')}
+                  />
+                </div>
+
+                <div>
+                  <div className="form-label" style={{ marginBottom: 4 }}>Tasks</div>
+                  <div style={{ fontSize: 13, color: 'var(--slate-600)' }}>{tasks.length} total · {done} done</div>
+                </div>
+
               </div>
-
-              <div>
-                <div className="form-label" style={{ marginBottom: 4 }}>Start</div>
-                <input
-                  type="date"
-                  className="form-input"
-                  style={{ fontSize: 13, padding: '5px 8px' }}
-                  value={p.start ? p.start.slice(0, 10) : ''}
-                  onChange={e => saveProject({ start_date: e.target.value || null }, 'Start date updated')}
-                />
-              </div>
-
-              <div>
-                <div className="form-label" style={{ marginBottom: 4 }}>Due</div>
-                <input
-                  type="date"
-                  className="form-input"
-                  style={{ fontSize: 13, padding: '5px 8px' }}
-                  value={p.due ? p.due.slice(0, 10) : ''}
-                  onChange={e => saveProject({ due_date: e.target.value || null }, 'Due date updated')}
-                />
-              </div>
-
-              <div>
-                <div className="form-label" style={{ marginBottom: 4 }}>Tasks</div>
-                <div style={{ fontSize: 13, color: 'var(--slate-600)' }}>{tasks.length} total · {done} done</div>
-              </div>
-
             </div>
+
+            {/* Collaborators card — admin only */}
+            {isAdmin && (
+              <CollaboratorsCard
+                project={p}
+                projectCollaborators={projectCollaborators.filter(c => c.projectId === id)}
+                assignees={data.assignees}
+                onAdd={addProjectCollaborator}
+                onRemove={removeProjectCollaborator}
+                onVisibilityChange={setProjectTaskVisibility}
+                showToast={showToast}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -400,6 +415,105 @@ export default function ProjectDetail() {
         onClose={() => setDeleteTaskId(null)}
         onConfirm={async () => { await deleteTask(deleteTaskId); showToast('Task deleted'); setDeleteTaskId(null) }}
       />
+    </div>
+  )
+}
+
+// ── Collaborators sidebar card ─────────────────────────────
+function CollaboratorsCard({ project, projectCollaborators, assignees, onAdd, onRemove, onVisibilityChange, showToast }) {
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState('')
+  const [adding, setAdding] = useState(false)
+
+  const collabAssigneeIds = new Set(projectCollaborators.map(c => c.assigneeId))
+  const addableAssignees = assignees.filter(a => !collabAssigneeIds.has(a.id))
+
+  const handleAdd = async () => {
+    if (!selectedAssigneeId) return
+    setAdding(true)
+    const result = await onAdd(project.id, selectedAssigneeId)
+    if (result) { showToast('Collaborator added', 'success'); setSelectedAssigneeId('') }
+    setAdding(false)
+  }
+
+  const handleVisibility = async (v) => {
+    await onVisibilityChange(project.id, v)
+    showToast(v === 'all' ? 'Collaborators can now see all tasks' : 'Collaborators see only assigned tasks', 'success')
+  }
+
+  return (
+    <div className="card" style={{ padding: 18 }}>
+      <div className="section-title" style={{ marginBottom: 12 }}>Collaborators</div>
+
+      {/* Task visibility toggle */}
+      <div style={{ marginBottom: 14 }}>
+        <div className="form-label" style={{ marginBottom: 6 }}>Task Visibility</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[
+            { value: 'assigned_only', label: 'Assigned Only', desc: 'See only their tasks' },
+            { value: 'all',           label: 'All Tasks',     desc: 'See every task + auto-assigned' },
+          ].map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => handleVisibility(opt.value)}
+              style={{
+                flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+                border: project.taskVisibility === opt.value ? '2px solid var(--blue-500)' : '2px solid var(--slate-200)',
+                background: project.taskVisibility === opt.value ? 'var(--blue-50)' : 'var(--slate-50)',
+                transition: 'all .15s',
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, color: project.taskVisibility === opt.value ? 'var(--blue-700)' : 'var(--slate-700)' }}>{opt.label}</div>
+              <div style={{ fontSize: 10, color: 'var(--slate-400)', marginTop: 2 }}>{opt.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Collaborator list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+        {projectCollaborators.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--slate-400)', padding: '4px 0' }}>No collaborators yet.</div>
+        )}
+        {projectCollaborators.map(c => {
+          const a = assignees.find(x => x.id === c.assigneeId)
+          if (!a) return null
+          return (
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--slate-50)', borderRadius: 8, border: '1px solid var(--slate-200)' }}>
+              <Avatar assignee={a} size={26} />
+              <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{a.name}</div>
+              <button
+                onClick={async () => { await onRemove(c.id); showToast('Collaborator removed', 'success') }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)', fontSize: 12, padding: '2px 4px', borderRadius: 4 }}
+                title="Remove collaborator"
+              >✕</button>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Add collaborator */}
+      {addableAssignees.length > 0 && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <select
+            className="form-select"
+            style={{ flex: 1, fontSize: 12 }}
+            value={selectedAssigneeId}
+            onChange={e => setSelectedAssigneeId(e.target.value)}
+          >
+            <option value="">— Add collaborator —</option>
+            {addableAssignees.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+          <button
+            className="btn btn-primary"
+            style={{ fontSize: 12, padding: '5px 10px', whiteSpace: 'nowrap' }}
+            onClick={handleAdd}
+            disabled={adding || !selectedAssigneeId}
+          >
+            {adding ? '…' : '+ Add'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

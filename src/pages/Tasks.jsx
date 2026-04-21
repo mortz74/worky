@@ -359,7 +359,7 @@ function AddTaskModal({ open, onClose }) {
 
 // ── Main Tasks Page ────────────────────────────────────────
 export default function Tasks() {
-  const { data, updateTask, deleteTask, createReminder, showToast, currentAssigneeId } = useApp()
+  const { data, updateTask, deleteTask, createReminder, showToast, currentAssigneeId, isAdmin, projectCollaborators } = useApp()
   const [searchParams] = useSearchParams()
 
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'inbox')
@@ -409,6 +409,19 @@ export default function Tasks() {
 
   const owner = data.assignees.find(a => a.id === currentAssigneeId)
 
+  // For non-admin collaborators, filter tasks by project visibility
+  const visibleTasks = isAdmin ? data.tasks : data.tasks.filter(task => {
+    const taskProjectIds = task.projectIds || []
+    if (taskProjectIds.length === 0) return false // members only see project tasks
+    return taskProjectIds.some(pid => {
+      const isCollab = projectCollaborators.some(c => c.projectId === pid && c.assigneeId === currentAssigneeId)
+      if (!isCollab) return false
+      const proj = data.projects.find(p => p.id === pid)
+      if (proj?.taskVisibility === 'all') return true
+      return (task.assigneeIds || []).includes(currentAssigneeId)
+    })
+  })
+
   // ── Tab-level filter logic ─────────────────────────────────
   const filterByTab = (t) => {
     const matchSearch  = !search   || t.name.toLowerCase().includes(search.toLowerCase())
@@ -457,10 +470,10 @@ export default function Tasks() {
     }
   }
 
-  const filtered = data.tasks.filter(filterByTab).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  const filtered = visibleTasks.filter(filterByTab).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 
   // ── Tab badge counts ───────────────────────────────────────
-  const tabCount = (tabKey) => data.tasks.filter(t => {
+  const tabCount = (tabKey) => visibleTasks.filter(t => {
     switch (tabKey) {
       case 'inbox':   return t.status === 'todo' && t.active !== false
       case 'todo':    return t.status === 'inprogress' && !t.roadmap && !!owner && (t.assigneeIds||[]).includes(owner.id) && t.active !== false

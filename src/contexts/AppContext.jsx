@@ -7,7 +7,8 @@ const AppContext = createContext(null)
 const mapOwner    = r => ({ id: r.id, name: r.name, email: r.email, role: r.role || 'Owner', color: r.color || '#2563eb', initials: r.initials || r.name.slice(0,2).toUpperCase() })
 const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', notesUrl: r.notes_url || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false, authUserId: r.auth_user_id || null })
 const mapDomain   = r => ({ id: r.id, name: r.name })
-const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '', projectType: r.project_type || 'project', domain: r.domain || '', notesUrl: r.notes_url || '', createdBy: r.created_by || null })
+const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '', projectType: r.project_type || 'project', domain: r.domain || '', notesUrl: r.notes_url || '', createdBy: r.created_by || null, taskVisibility: r.task_visibility || 'assigned_only' })
+const mapCollaborator = r => ({ id: r.id, projectId: r.project_id, assigneeId: r.assignee_id, userId: r.user_id, createdAt: r.created_at })
 const mapReminder = r => ({ id: r.id, entityType: r.entity_type, entityId: r.entity_id, remindAt: r.remind_at, recurrence: r.recurrence || 'none', notes: r.notes || '' })
 const mapWorkspaceMember = r => ({
   id: r.id,
@@ -75,7 +76,8 @@ const toLocalProject = u => {
   if ('photo_url'    in u) m.photoUrl    = u.photo_url
   if ('project_type' in u) m.projectType = u.project_type
   if ('domain'       in u) m.domain      = u.domain
-  if ('notes_url'    in u) m.notesUrl    = u.notes_url
+  if ('notes_url'      in u) m.notesUrl      = u.notes_url
+  if ('task_visibility' in u) m.taskVisibility = u.task_visibility
   return m
 }
 
@@ -101,12 +103,17 @@ export function AppProvider({ children }) {
   const [isAdmin, setIsAdmin]                   = useState(false)
   const [currentAssigneeId, setCurrentAssigneeId] = useState(null)
   const [workspaceMembers, setWorkspaceMembers] = useState([])
+  const [projectCollaborators, setProjectCollaborators] = useState([])
+  const projectCollaboratorsRef = useRef([])
+  const dataRef = useRef({ owners: [], assignees: [], projects: [], tasks: [], domains: [], reminders: [] })
   const [data, setData]             = useState({ owners: [], assignees: [], projects: [], tasks: [], domains: [], reminders: [] })
   const [toast, setToast]           = useState(null)
 
-  // Keep latest workspaceId in a ref so callbacks always have the current value
+  // Keep latest values in refs so callbacks always have current values without stale closures
   const workspaceIdRef = useRef(null)
   useEffect(() => { workspaceIdRef.current = workspaceId }, [workspaceId])
+  useEffect(() => { projectCollaboratorsRef.current = projectCollaborators }, [projectCollaborators])
+  useEffect(() => { dataRef.current = data }, [data])
 
   const showToast = useCallback((msg, type = 'success') => {
     setToast({ msg, type })
@@ -201,7 +208,7 @@ export function AppProvider({ children }) {
 
   // ── Data loading ──────────────────────────────────────────
   const loadData = useCallback(async (wsId) => {
-    const [owners, assignees, projects, tasks, domainsRes, remindersRes] = await Promise.all([
+    const [owners, assignees, projects, tasks, domainsRes, remindersRes, collaboratorsRes] = await Promise.all([
       sb.from('owners').select('*').eq('user_id', wsId).order('created_at'),
       sb.from('assignees').select('*').eq('user_id', wsId).order('name'),
       sb.from('projects').select('*').eq('user_id', wsId).order('created_at'),
@@ -211,7 +218,9 @@ export function AppProvider({ children }) {
         .order('created_at'),
       sb.from('domains').select('*').eq('user_id', wsId).order('created_at'),
       sb.from('reminders').select('*').eq('user_id', wsId).order('remind_at'),
+      sb.from('project_collaborators').select('*').eq('user_id', wsId).order('created_at'),
     ])
+    setProjectCollaborators((collaboratorsRes.data || []).map(mapCollaborator))
 
     let domainRows = domainsRes.data || []
     if (domainRows.length === 0) {
@@ -327,18 +336,30 @@ export function AppProvider({ children }) {
   const createTask = useCallback(async (row) => {
     const wsId = workspaceIdRef.current
     const { assignee_ids = [], project_ids = [], ...taskRow } = row
-    if (assignee_ids.length > 0 && taskRow.status === 'todo') taskRow.status = 'inprogress'
 
-    // Always set workspace scoping and creator
+    // For projects with task_visibility='all', auto-include all collaborators
+    const allAssigneeIds = new Set(assignee_ids)
+    project_ids.forEach(pid => {
+      const proj = dataRef.current.projects.find(p => p.id === pid)
+      if (proj?.taskVisibility === 'all') {
+        projectCollaboratorsRef.current
+          .filter(c => c.projectId === pid)
+          .forEach(c => allAssigneeIds.add(c.assigneeId))
+      }
+    })
+
+    const finalAssigneeIds = [...allAssigneeIds]
+    if (finalAssigneeIds.length > 0 && taskRow.status === 'todo') taskRow.status = 'inprogress'
+
     taskRow.user_id    = wsId
     taskRow.created_by = user?.id
 
     const { data: res, error } = await sb.from('tasks').insert(taskRow).select().single()
     if (error) { showToast(error.message, 'error'); return null }
 
-    if (assignee_ids.length > 0) {
+    if (finalAssigneeIds.length > 0) {
       await sb.from('task_assignees').insert(
-        assignee_ids.map(aid => ({ task_id: res.id, assignee_id: aid, user_id: wsId }))
+        finalAssigneeIds.map(aid => ({ task_id: res.id, assignee_id: aid, user_id: wsId }))
       )
     }
     if (project_ids.length > 0) {
@@ -349,7 +370,7 @@ export function AppProvider({ children }) {
 
     const task = mapTask({
       ...res,
-      task_assignees: assignee_ids.map(id => ({ assignee_id: id })),
+      task_assignees: finalAssigneeIds.map(id => ({ assignee_id: id })),
       task_projects:  project_ids.map(id  => ({ project_id:  id })),
     })
     setData(d => ({ ...d, tasks: [...d.tasks, task] }))
@@ -383,6 +404,83 @@ export function AppProvider({ children }) {
     setData(d => ({ ...d, projects: [...d.projects, mapProject(res)] }))
     return mapProject(res)
   }, [user, showToast])
+
+  // ── Project collaborator mutations ────────────────────────
+  const addProjectCollaborator = useCallback(async (projectId, assigneeId) => {
+    const wsId = workspaceIdRef.current
+    const existing = projectCollaboratorsRef.current.find(
+      c => c.projectId === projectId && c.assigneeId === assigneeId
+    )
+    if (existing) { showToast('Already a collaborator', 'error'); return null }
+
+    const { data: res, error } = await sb.from('project_collaborators').insert({
+      project_id: projectId, assignee_id: assigneeId, user_id: wsId,
+    }).select().single()
+    if (error) { showToast(error.message, 'error'); return null }
+
+    const collab = mapCollaborator(res)
+    setProjectCollaborators(cs => [...cs, collab])
+
+    // If project task_visibility = 'all', assign this collaborator to all existing project tasks
+    const proj = dataRef.current.projects.find(p => p.id === projectId)
+    if (proj?.taskVisibility === 'all') {
+      const projectTasks = dataRef.current.tasks.filter(t => (t.projectIds || []).includes(projectId))
+      for (const task of projectTasks) {
+        if (!(task.assigneeIds || []).includes(assigneeId)) {
+          const newIds = [...(task.assigneeIds || []), assigneeId]
+          await sb.from('task_assignees').insert({ task_id: task.id, assignee_id: assigneeId, user_id: wsId })
+          setData(d => ({
+            ...d,
+            tasks: d.tasks.map(t => t.id === task.id
+              ? { ...t, assigneeIds: newIds, assigneeId: newIds[0] }
+              : t
+            )
+          }))
+        }
+      }
+    }
+    return collab
+  }, [showToast])
+
+  const removeProjectCollaborator = useCallback(async (collaboratorId) => {
+    const { error } = await sb.from('project_collaborators').delete().eq('id', collaboratorId)
+    if (error) { showToast(error.message, 'error'); return false }
+    setProjectCollaborators(cs => cs.filter(c => c.id !== collaboratorId))
+    return true
+  }, [showToast])
+
+  const setProjectTaskVisibility = useCallback(async (projectId, visibility) => {
+    const wsId = workspaceIdRef.current
+    const ok = await updateProject(projectId, { task_visibility: visibility })
+    if (!ok) return false
+    // If switching to 'all', assign all current collaborators to all project tasks
+    if (visibility === 'all') {
+      const collabs = projectCollaboratorsRef.current.filter(c => c.projectId === projectId)
+      const projectTasks = dataRef.current.tasks.filter(t => (t.projectIds || []).includes(projectId))
+      for (const task of projectTasks) {
+        const newAssigneeIds = new Set(task.assigneeIds || [])
+        const toInsert = []
+        collabs.forEach(c => {
+          if (!newAssigneeIds.has(c.assigneeId)) {
+            newAssigneeIds.add(c.assigneeId)
+            toInsert.push({ task_id: task.id, assignee_id: c.assigneeId, user_id: wsId })
+          }
+        })
+        if (toInsert.length > 0) {
+          await sb.from('task_assignees').insert(toInsert)
+          const ids = [...newAssigneeIds]
+          setData(d => ({
+            ...d,
+            tasks: d.tasks.map(t => t.id === task.id
+              ? { ...t, assigneeIds: ids, assigneeId: ids[0] }
+              : t
+            )
+          }))
+        }
+      }
+    }
+    return true
+  }, [updateProject, showToast])
 
   // ── Assignee mutations ────────────────────────────────────
   const updateAssignee = useCallback(async (assigneeId, updates) => {
@@ -593,9 +691,11 @@ export function AppProvider({ children }) {
       user, authReady, data, loadData,
       workspaceId, isAdmin, currentAssigneeId,
       workspaceMembers,
+      projectCollaborators,
       getAssignee, getProject, getOwner,
       updateTask, createTask, deleteTask,
       updateProject, createProject,
+      addProjectCollaborator, removeProjectCollaborator, setProjectTaskVisibility,
       updateAssignee, createAssignee, setOwnerAssignee,
       addWorkspaceMember, removeWorkspaceMember, loadWorkspaceMembers,
       fetchFilesForAssignee, fetchFilesForProject, fetchFilesForTask,

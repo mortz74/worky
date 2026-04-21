@@ -153,7 +153,7 @@ function GroupLabel({ label, count }) {
 }
 
 export default function Projects() {
-  const { data, createProject, updateProject, showToast, user } = useApp()
+  const { data, createProject, updateProject, showToast, user, isAdmin, currentAssigneeId, projectCollaborators } = useApp()
   const [domainF, setDomainF] = useState('')
   const navigate = useNavigate()
   const [search, setSearch]       = useState('')
@@ -176,7 +176,14 @@ export default function Projects() {
     setRemovePhoto(false)
   }
 
-  const filtered = data.projects.filter(p => {
+  // Non-admin collaborators only see projects they've been added to
+  const visibleProjects = isAdmin
+    ? data.projects
+    : data.projects.filter(p =>
+        projectCollaborators.some(c => c.projectId === p.id && c.assigneeId === currentAssigneeId)
+      )
+
+  const filtered = visibleProjects.filter(p => {
     if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false
     if (statusF && p.status !== statusF) return false
     if (domainF && p.domain !== domainF) return false
