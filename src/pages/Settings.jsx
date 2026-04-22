@@ -6,6 +6,7 @@ export default function Settings() {
   const {
     data, isAdmin, workspaceMembers,
     createDomain, deleteDomain,
+    createDepartment, deleteDepartment,
     addWorkspaceMember, removeWorkspaceMember,
     showToast,
   } = useApp()
@@ -13,6 +14,8 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState('domains')
   const [newDomain, setNewDomain] = useState('')
   const [addingDomain, setAddingDomain] = useState(false)
+  const [newDept, setNewDept] = useState('')
+  const [addingDept, setAddingDept] = useState(false)
   const [addingMember, setAddingMember] = useState(false)
   const [selectedNewMember, setSelectedNewMember] = useState('')
   const [removingId, setRemovingId] = useState(null)
@@ -48,9 +51,21 @@ export default function Settings() {
   const memberAssigneeIds = new Set(workspaceMembers.map(m => m.assigneeId).filter(Boolean))
   const invitableAssignees = data.assignees.filter(a => !memberAssigneeIds.has(a.id))
 
+  const handleAddDept = async () => {
+    if (!newDept.trim()) return
+    if (data.departments.some(d => d.name.toLowerCase() === newDept.trim().toLowerCase())) {
+      showToast('Department already exists', 'error'); return
+    }
+    setAddingDept(true)
+    await createDepartment(newDept.trim())
+    setNewDept('')
+    setAddingDept(false)
+    showToast('Department added', 'success')
+  }
+
   const tabs = isAdmin
-    ? [{ id: 'domains', label: 'Domains' }, { id: 'team', label: 'Team' }]
-    : [{ id: 'domains', label: 'Domains' }]
+    ? [{ id: 'domains', label: 'Domains' }, { id: 'departments', label: 'Departments' }, { id: 'team', label: 'Team' }]
+    : [{ id: 'domains', label: 'Domains' }, { id: 'departments', label: 'Departments' }]
 
   return (
     <div className="page active">
@@ -117,6 +132,50 @@ export default function Settings() {
                   />
                   <button className="btn btn-primary" onClick={handleAddDomain} disabled={addingDomain || !newDomain.trim()}>
                     {addingDomain ? 'Adding…' : '+ Add'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Departments tab */}
+          {activeTab === 'departments' && (
+            <div className="card" style={{ padding: 24 }}>
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--slate-900)', marginBottom: 4 }}>Departments</div>
+                <div style={{ fontSize: 13, color: 'var(--slate-500)' }}>
+                  Departments appear as a dropdown when adding or editing assignees.
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+                {data.departments.length === 0 && (
+                  <div style={{ fontSize: 13, color: 'var(--slate-400)', padding: '10px 0' }}>No departments yet.</div>
+                )}
+                {data.departments.map(d => (
+                  <div key={d.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px', background: 'var(--slate-50)', borderRadius: 8, border: '1px solid var(--slate-200)' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--slate-700)' }}>🏢 {d.name}</span>
+                    {isAdmin && (
+                      <button
+                        onClick={async () => { await deleteDepartment(d.id); showToast(`"${d.name}" deleted`, 'success') }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)', fontSize: 12, padding: '2px 6px', borderRadius: 4 }}
+                        title="Delete department"
+                      >✕</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {isAdmin && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className="form-input"
+                    style={{ flex: 1, fontSize: 13 }}
+                    value={newDept}
+                    onChange={e => setNewDept(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAddDept()}
+                    placeholder="New department name…"
+                  />
+                  <button className="btn btn-primary" onClick={handleAddDept} disabled={addingDept || !newDept.trim()}>
+                    {addingDept ? 'Adding…' : '+ Add'}
                   </button>
                 </div>
               )}

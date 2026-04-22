@@ -6,7 +6,8 @@ const AppContext = createContext(null)
 // ── DB → local mappers ────────────────────────────────────────
 const mapOwner    = r => ({ id: r.id, name: r.name, email: r.email, role: r.role || 'Owner', color: r.color || '#2563eb', initials: r.initials || r.name.slice(0,2).toUpperCase() })
 const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', notesUrl: r.notes_url || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false, authUserId: r.auth_user_id || null })
-const mapDomain   = r => ({ id: r.id, name: r.name })
+const mapDomain      = r => ({ id: r.id, name: r.name })
+const mapDepartment  = r => ({ id: r.id, name: r.name })
 const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '', projectType: r.project_type || 'project', domain: r.domain || '', notesUrl: r.notes_url || '', createdBy: r.created_by || null, taskVisibility: r.task_visibility || 'assigned_only' })
 const mapCollaborator = r => ({ id: r.id, projectId: r.project_id, assigneeId: r.assignee_id, userId: r.user_id, createdAt: r.created_at })
 const mapReminder = r => ({ id: r.id, entityType: r.entity_type, entityId: r.entity_id, remindAt: r.remind_at, recurrence: r.recurrence || 'none', notes: r.notes || '' })
@@ -105,8 +106,8 @@ export function AppProvider({ children }) {
   const [workspaceMembers, setWorkspaceMembers] = useState([])
   const [projectCollaborators, setProjectCollaborators] = useState([])
   const projectCollaboratorsRef = useRef([])
-  const dataRef = useRef({ owners: [], assignees: [], projects: [], tasks: [], domains: [], reminders: [] })
-  const [data, setData]             = useState({ owners: [], assignees: [], projects: [], tasks: [], domains: [], reminders: [] })
+  const dataRef = useRef({ owners: [], assignees: [], projects: [], tasks: [], domains: [], departments: [], reminders: [] })
+  const [data, setData]             = useState({ owners: [], assignees: [], projects: [], tasks: [], domains: [], departments: [], reminders: [] })
   const [toast, setToast]           = useState(null)
 
   // Keep latest values in refs so callbacks always have current values without stale closures
@@ -208,7 +209,7 @@ export function AppProvider({ children }) {
 
   // ── Data loading ──────────────────────────────────────────
   const loadData = useCallback(async (wsId) => {
-    const [owners, assignees, projects, tasks, domainsRes, remindersRes, collaboratorsRes] = await Promise.all([
+    const [owners, assignees, projects, tasks, domainsRes, departmentsRes, remindersRes, collaboratorsRes] = await Promise.all([
       sb.from('owners').select('*').eq('user_id', wsId).order('created_at'),
       sb.from('assignees').select('*').eq('user_id', wsId).order('name'),
       sb.from('projects').select('*').eq('user_id', wsId).order('created_at'),
@@ -217,6 +218,7 @@ export function AppProvider({ children }) {
         .eq('user_id', wsId)
         .order('created_at'),
       sb.from('domains').select('*').eq('user_id', wsId).order('created_at'),
+      sb.from('departments').select('*').eq('user_id', wsId).order('name'),
       sb.from('reminders').select('*').eq('user_id', wsId).order('remind_at'),
       sb.from('project_collaborators').select('*').eq('user_id', wsId).order('created_at'),
     ])
@@ -233,12 +235,13 @@ export function AppProvider({ children }) {
     }
 
     setData({
-      owners:    (owners.data    || []).map(mapOwner),
-      assignees: (assignees.data || []).map(mapAssignee),
-      projects:  (projects.data  || []).map(mapProject),
-      tasks:     (tasks.data     || []).map(mapTask),
-      domains:   domainRows.map(mapDomain),
-      reminders: (remindersRes.data || []).map(mapReminder),
+      owners:      (owners.data    || []).map(mapOwner),
+      assignees:   (assignees.data || []).map(mapAssignee),
+      projects:    (projects.data  || []).map(mapProject),
+      tasks:       (tasks.data     || []).map(mapTask),
+      domains:     domainRows.map(mapDomain),
+      departments: (departmentsRes.data || []).map(mapDepartment),
+      reminders:   (remindersRes.data || []).map(mapReminder),
     })
   }, [])
 
@@ -625,6 +628,24 @@ export function AppProvider({ children }) {
     return true
   }, [showToast])
 
+  // ── Department mutations ──────────────────────────────────
+  const createDepartment = useCallback(async (name) => {
+    const wsId = workspaceIdRef.current
+    const { data: res, error } = await sb.from('departments').insert({ name: name.trim(), user_id: wsId }).select().single()
+    if (error) { showToast(error.message, 'error'); return null }
+    const d = mapDepartment(res)
+    setData(s => ({ ...s, departments: [...s.departments, d].sort((a, b) => a.name.localeCompare(b.name)) }))
+    return d
+  }, [showToast])
+
+  const deleteDepartment = useCallback(async (deptId) => {
+    const wsId = workspaceIdRef.current
+    const { error } = await sb.from('departments').delete().eq('id', deptId).eq('user_id', wsId)
+    if (error) { showToast(error.message, 'error'); return false }
+    setData(s => ({ ...s, departments: s.departments.filter(d => d.id !== deptId) }))
+    return true
+  }, [showToast])
+
   // ── Domain mutations ──────────────────────────────────────
   const createDomain = useCallback(async (name) => {
     const wsId = workspaceIdRef.current
@@ -700,6 +721,7 @@ export function AppProvider({ children }) {
       addWorkspaceMember, removeWorkspaceMember, loadWorkspaceMembers,
       fetchFilesForAssignee, fetchFilesForProject, fetchFilesForTask,
       addFileToEntity, removeFileFromEntity, setFileArchived,
+      createDepartment, deleteDepartment,
       createDomain, deleteDomain,
       createReminder, updateReminder, deleteReminder,
       showToast, toast,

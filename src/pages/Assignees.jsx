@@ -82,7 +82,7 @@ function PhotoPicker({ photoPreview, existingPhotoUrl, color, initials, onPhotoC
   )
 }
 
-function AssigneeForm({ form, set, photoPreview, existingPhotoUrl, onPhotoChange, onRemovePhoto }) {
+function AssigneeForm({ form, set, photoPreview, existingPhotoUrl, onPhotoChange, onRemovePhoto, departments }) {
   return (
     <>
       {/* Photo */}
@@ -108,7 +108,10 @@ function AssigneeForm({ form, set, photoPreview, existingPhotoUrl, onPhotoChange
       </div>
       <div className="form-group">
         <label className="form-label">Department</label>
-        <input className="form-input" value={form.dept} onChange={e => set('dept', e.target.value)} placeholder="Engineering" />
+        <select className="form-select" value={form.dept} onChange={e => set('dept', e.target.value)}>
+          <option value="">— No Department —</option>
+          {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+        </select>
       </div>
       <div className="form-group">
         <label className="form-label">Notes</label>
@@ -139,7 +142,7 @@ function AssigneeForm({ form, set, photoPreview, existingPhotoUrl, onPhotoChange
 }
 
 export default function Assignees() {
-  const { data, createAssignee, updateAssignee, showToast, user, currentAssigneeId } = useApp()
+  const { data, createAssignee, updateAssignee, showToast, user, currentAssigneeId, isAdmin } = useApp()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
@@ -336,6 +339,7 @@ export default function Assignees() {
           existingPhotoUrl=""
           onPhotoChange={handlePhotoChange}
           onRemovePhoto={handleRemovePhoto}
+          departments={data.departments}
         />
       </Modal>
 
@@ -351,6 +355,7 @@ export default function Assignees() {
           existingPhotoUrl={removePhoto ? '' : (editTarget?.photoUrl || '')}
           onPhotoChange={handlePhotoChange}
           onRemovePhoto={handleRemovePhoto}
+          departments={data.departments}
         />
       </Modal>
     </div>
