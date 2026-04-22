@@ -8,6 +8,7 @@ import Modal from '../components/Modal'
 import MultiSelect from '../components/MultiSelect'
 import EditTaskModal from '../components/EditTaskModal'
 import QuickTaskModal from '../components/QuickTaskModal'
+import Pagination from '../components/Pagination'
 import AddAssigneeModal from '../components/AddAssigneeModal'
 import AddProjectModal from '../components/AddProjectModal'
 import AddDueDateModal from '../components/AddDueDateModal'
@@ -373,6 +374,8 @@ export default function Tasks() {
   const [assigneeF, setAssigneeF] = useState('')
   const [roadmapF, setRoadmapF] = useState('')
 
+  const [page, setPage]           = useState(1)
+  const [pageSize, setPageSize]   = useState(10)
   const [selected, setSelected]   = useState(new Set())
   const [showAdd, setShowAdd]     = useState(false)
   const [showQuick, setShowQuick] = useState(false)
@@ -397,7 +400,7 @@ export default function Tasks() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // Reset per-tab filters when switching tabs
+  // Reset per-tab filters and pagination when switching tabs
   useEffect(() => {
     setSearch('')
     setProjectF('')
@@ -407,7 +410,11 @@ export default function Tasks() {
     setAssigneeF('')
     setRoadmapF('')
     setSelected(new Set())
+    setPage(1)
   }, [activeTab])
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1) }, [search, projectF, domainF, activeF, statusF, assigneeF, roadmapF])
 
   const owner = data.assignees.find(a => a.id === currentAssigneeId)
 
@@ -473,6 +480,7 @@ export default function Tasks() {
   }
 
   const filtered = visibleTasks.filter(filterByTab).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   // ── Tab badge counts ───────────────────────────────────────
   const tabCount = (tabKey) => visibleTasks.filter(t => {
@@ -754,7 +762,7 @@ export default function Tasks() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(t => (
+                {paginated.map(t => (
                   <TaskRow
                     key={t.id}
                     task={t}
@@ -766,7 +774,15 @@ export default function Tasks() {
                   />
                 ))}
               </tbody>
-            </table></div>
+            </table>
+            <Pagination
+              total={filtered.length}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          </div>
           )}
         </div>
       </div>

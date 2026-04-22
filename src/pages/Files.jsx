@@ -4,6 +4,7 @@ import { useApp } from '../contexts/AppContext'
 import { sb } from '../lib/supabase'
 import Avatar from '../components/Avatar'
 import MultiSelect from '../components/MultiSelect'
+import Pagination from '../components/Pagination'
 
 function AvatarStack({ assignees = [], size = 24 }) {
   if (assignees.length === 0) return <span style={{ color: 'var(--slate-300)', fontSize: 12 }}>—</span>
@@ -64,6 +65,10 @@ export default function Files() {
   // ── Sort ───────────────────────────────────────────────────
   const [sortCol, setSortCol] = useState('date')
   const [sortDir, setSortDir] = useState('desc')
+
+  // ── Pagination ─────────────────────────────────────────────
+  const [page, setPage]         = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   // ── 3-dot menu ─────────────────────────────────────────────
   const [menuOpenId, setMenuOpenId] = useState(null)
@@ -162,7 +167,10 @@ export default function Files() {
   const handleSort = col => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
+    setPage(1)
   }
+
+  const paginated = sorted.slice((page - 1) * pageSize, page * pageSize)
 
   const hasFilters = filterAssigneeIds.length > 0 || filterProjectIds.length > 0 || dateFrom || dateTo
 
@@ -385,7 +393,7 @@ export default function Files() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map(file => (
+                {paginated.map(file => (
                   <tr key={file.id} style={{ opacity: file.archived ? 0.6 : 1 }}>
                     {/* File Name */}
                     <td style={{ fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -514,6 +522,15 @@ export default function Files() {
                 ))}
               </tbody>
             </table>
+          )}
+          {sorted.length > 0 && (
+            <Pagination
+              total={sorted.length}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
           )}
         </div>
       </div>

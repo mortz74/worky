@@ -207,6 +207,24 @@ export function AppProvider({ children }) {
     return uid
   }, [])
 
+  // ── localStorage cache helpers ────────────────────────────
+  const CACHE_KEY = 'worky-data-cache'
+
+  const saveCache = (wsId, payload) => {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ wsId, ts: Date.now(), payload })) } catch {}
+  }
+
+  const restoreCache = (wsId) => {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY)
+      if (!raw) return false
+      const { wsId: cachedWsId, payload } = JSON.parse(raw)
+      if (cachedWsId !== wsId) return false
+      setData(payload)
+      return true
+    } catch { return false }
+  }
+
   // ── Data loading ──────────────────────────────────────────
   const loadData = useCallback(async (wsId) => {
     const [owners, assignees, projects, tasks, domainsRes, departmentsRes, remindersRes, collaboratorsRes] = await Promise.all([
@@ -234,7 +252,7 @@ export function AppProvider({ children }) {
       domainRows = seeded || []
     }
 
-    setData({
+    const fresh = {
       owners:      (owners.data    || []).map(mapOwner),
       assignees:   (assignees.data || []).map(mapAssignee),
       projects:    (projects.data  || []).map(mapProject),
@@ -242,8 +260,10 @@ export function AppProvider({ children }) {
       domains:     domainRows.map(mapDomain),
       departments: (departmentsRes.data || []).map(mapDepartment),
       reminders:   (remindersRes.data || []).map(mapReminder),
-    })
-  }, [])
+    }
+    setData(fresh)
+    saveCache(wsId, fresh)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadWorkspaceMembers = useCallback(async (wsId) => {
     const { data: rows } = await sb
@@ -263,8 +283,9 @@ export function AppProvider({ children }) {
       const u = session?.user ?? null
       setUser(u)
       if (!u) {
-        setData({ owners: [], assignees: [], projects: [], tasks: [], domains: [], reminders: [] })
+        setData({ owners: [], assignees: [], projects: [], tasks: [], domains: [], departments: [], reminders: [] })
         setWorkspaceMembers([])
+        try { localStorage.removeItem('worky-data-cache') } catch {}
         setWorkspaceId(null)
         setIsAdmin(false)
         setCurrentAssigneeId(null)
@@ -274,12 +295,13 @@ export function AppProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Load data once user is known — runs after auth callback releases its lock
+  // Load data once user is known — restore cache immediately, then refresh from DB in background
   useEffect(() => {
     if (!user) return
     const init = async () => {
       const wsId = await resolveWorkspace(user.id, user.email)
-      await Promise.all([loadData(wsId), loadWorkspaceMembers(wsId)])
+      restoreCache(wsId)                                          // paint instantly from cache
+      await Promise.all([loadData(wsId), loadWorkspaceMembers(wsId)]) // then refresh silently
     }
     init()
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
