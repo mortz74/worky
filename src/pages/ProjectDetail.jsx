@@ -96,7 +96,7 @@ function DeleteConfirmModal({ task, open, onClose, onConfirm }) {
 export default function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data, updateTask, updateProject, deleteTask, createReminder, showToast, fetchFilesForProject, addFileToEntity, removeFileFromEntity, setFileArchived, isAdmin, projectCollaborators, addProjectCollaborator, removeProjectCollaborator, setProjectTaskVisibility } = useApp()
+  const { data, updateTask, updateProject, deleteTask, createReminder, showToast, fetchFilesForProject, addFileToEntity, removeFileFromEntity, setFileArchived, isAdmin, projectCollaborators, addProjectCollaborator, removeProjectCollaborator, setProjectTaskVisibility, currentAssigneeId } = useApp()
   const [activeTab, setActiveTab]     = useState('tasks')
   const [files, setFiles]             = useState([])
   const [showAddFile, setShowAddFile] = useState(false)
@@ -373,7 +373,7 @@ export default function ProjectDetail() {
       </div>
       {taskMenuId && (() => {
         const t = data.tasks.find(t => t.id === taskMenuId)
-        const ownerAssignee = data.assignees.find(a => a.isOwner)
+        const ownerAssignee = data.assignees.find(a => a.id === currentAssigneeId)
         const alreadyOwner = ownerAssignee && (t.assigneeIds || []).includes(ownerAssignee.id)
         const menuItems = [
           { icon: '🔄', label: 'Mark In Progress', onClick: () => { updateTask(taskMenuId, { status: 'inprogress' }); setTaskMenuId(null) } },
