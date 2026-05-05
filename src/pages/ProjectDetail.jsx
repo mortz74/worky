@@ -6,6 +6,7 @@ import Avatar from '../components/Avatar'
 import FileList from '../components/FileList'
 import AddFileModal from '../components/AddFileModal'
 import QuickTaskModal from '../components/QuickTaskModal'
+import AddAssigneeModal from '../components/AddAssigneeModal'
 
 const fmt = d => { if (!d) return '—'; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 
@@ -105,6 +106,7 @@ export default function ProjectDetail() {
   const [addDueDateTask, setAddDueDateTask] = useState(null)
   const [addReminderTask, setAddReminderTask] = useState(null)
   const [deleteTaskId, setDeleteTaskId] = useState(null)
+  const [addAssigneeTask, setAddAssigneeTask] = useState(null)
   const [editingDesc, setEditingDesc] = useState(false)
   const [descDraft, setDescDraft]     = useState('')
   const descRef = useRef(null)
@@ -371,8 +373,13 @@ export default function ProjectDetail() {
       </div>
       {taskMenuId && (() => {
         const t = data.tasks.find(t => t.id === taskMenuId)
+        const ownerAssignee = data.assignees.find(a => a.isOwner)
+        const alreadyOwner = ownerAssignee && (t.assigneeIds || []).includes(ownerAssignee.id)
         const menuItems = [
+          { icon: '🔄', label: 'Mark In Progress', onClick: () => { updateTask(taskMenuId, { status: 'inprogress' }); setTaskMenuId(null) } },
           { icon: '✅', label: 'Mark Done', onClick: () => { updateTask(taskMenuId, { status: 'done' }); setTaskMenuId(null) } },
+          ...(ownerAssignee && !alreadyOwner ? [{ icon: '👤', label: `Add Assignee to ${ownerAssignee.name}`, onClick: () => { updateTask(taskMenuId, { assignee_ids: [...(t.assigneeIds || []), ownerAssignee.id] }); setTaskMenuId(null) } }] : []),
+          { icon: '➕', label: 'Add Assignee', onClick: () => { setAddAssigneeTask(t); setTaskMenuId(null) } },
           { divider: true },
           { icon: '📅', label: 'Add Due Date', onClick: () => { setAddDueDateTask(t); setTaskMenuId(null) } },
           { icon: '🔔', label: 'Add Reminder', onClick: () => { setAddReminderTask(t); setTaskMenuId(null) } },
@@ -414,6 +421,12 @@ export default function ProjectDetail() {
         open={!!deleteTaskId}
         onClose={() => setDeleteTaskId(null)}
         onConfirm={async () => { await deleteTask(deleteTaskId); showToast('Task deleted'); setDeleteTaskId(null) }}
+      />
+      <AddAssigneeModal
+        task={addAssigneeTask}
+        open={!!addAssigneeTask}
+        onClose={() => setAddAssigneeTask(null)}
+        onSave={async (assigneeIds) => { await updateTask(addAssigneeTask.id, { assignee_ids: assigneeIds }); showToast('Assignees updated'); setAddAssigneeTask(null) }}
       />
     </div>
   )
