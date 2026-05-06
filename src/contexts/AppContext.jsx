@@ -575,6 +575,7 @@ export function AppProvider({ children }) {
 
   const fetchFilesForAssignee = useCallback(async (assigneeId) => {
     const wsId = workspaceIdRef.current
+    if (!wsId) return []
     const { data: rows, error } = await sb
       .from('assignee_files')
       .select('file_id, files(*)')
@@ -586,6 +587,7 @@ export function AppProvider({ children }) {
 
   const fetchFilesForProject = useCallback(async (projectId) => {
     const wsId = workspaceIdRef.current
+    if (!wsId) return []
     const { data: rows, error } = await sb
       .from('project_files')
       .select('file_id, files(*)')
@@ -597,6 +599,7 @@ export function AppProvider({ children }) {
 
   const fetchFilesForTask = useCallback(async (taskId) => {
     const wsId = workspaceIdRef.current
+    if (!wsId) return []
     const { data: rows, error } = await sb
       .from('task_files')
       .select('file_id, files(*)')
