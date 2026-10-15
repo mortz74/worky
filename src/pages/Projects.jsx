@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../contexts/AppContext'
 import { sb } from '../lib/supabase'
 import Modal from '../components/Modal'
+import { goalTypeMeta } from './Goals'
 
 const EMOJIS = ['📁','🚀','💡','🛠','📊','🎯','🧩','🌱','🔥','⭐','🏗','📱']
 
@@ -16,7 +17,7 @@ async function uploadProjectPhoto(file, userId, showToast) {
   return data.publicUrl
 }
 
-function ProjectForm({ form, set, photoPreview, onPhotoChange, onRemovePhoto, domains = [] }) {
+function ProjectForm({ form, set, photoPreview, onPhotoChange, onRemovePhoto, domains = [], goals = [] }) {
   const fileRef = useRef(null)
   const displaySrc = photoPreview || form.photoUrl
 
@@ -96,6 +97,14 @@ function ProjectForm({ form, set, photoPreview, onPhotoChange, onRemovePhoto, do
       </div>
 
       <div className="form-group">
+        <label className="form-label">Goal</label>
+        <select className="form-select" value={form.goalId} onChange={e => set('goalId', e.target.value)}>
+          <option value="">— No goal —</option>
+          {goals.map(g => <option key={g.id} value={g.id}>{goalTypeMeta(g.type).emoji} {g.name}</option>)}
+        </select>
+      </div>
+
+      <div className="form-group">
         <label className="form-label">Emoji</label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {EMOJIS.map(em => (
@@ -139,7 +148,7 @@ function ProjectForm({ form, set, photoPreview, onPhotoChange, onRemovePhoto, do
   )
 }
 
-const emptyForm = () => ({ name: '', desc: '', start: '', due: '', status: 'active', emoji: '📁', tags: '', projectType: 'project', photoUrl: '', domain: '' })
+const emptyForm = () => ({ name: '', desc: '', start: '', due: '', status: 'active', emoji: '📁', tags: '', projectType: 'project', photoUrl: '', domain: '', goalId: '' })
 
 // Group label component
 function GroupLabel({ label, count }) {
@@ -210,6 +219,7 @@ export default function Projects() {
       projectType: project.projectType || 'project',
       photoUrl: project.photoUrl || '',
       domain: project.domain || '',
+      goalId: project.goalId || '',
     })
     resetPhoto()
   }
@@ -237,6 +247,7 @@ export default function Projects() {
       project_type: form.projectType,
       photo_url: photoUrl || null,
       domain: form.domain || null,
+      goal_id: form.goalId || null,
     })
     setSaving(false)
     showToast('Project created!', 'success')
@@ -260,6 +271,7 @@ export default function Projects() {
       project_type: form.projectType,
       photo_url: photoUrl || null,
       domain: form.domain || null,
+      goal_id: form.goalId || null,
     })
     setSaving(false)
     showToast('Project updated!', 'success')
@@ -344,7 +356,7 @@ export default function Projects() {
             <button className="btn btn-primary" onClick={handleAdd} disabled={saving}>{saving ? 'Saving…' : 'Create Project'}</button>
           </div>
         }>
-        <ProjectForm form={form} set={set} photoPreview={photoPreview} onPhotoChange={handlePhotoChange} onRemovePhoto={() => { resetPhoto(); setRemovePhoto(true) }} domains={data.domains} />
+        <ProjectForm form={form} set={set} photoPreview={photoPreview} onPhotoChange={handlePhotoChange} onRemovePhoto={() => { resetPhoto(); setRemovePhoto(true) }} domains={data.domains} goals={data.goals} />
       </Modal>
 
       {/* Edit modal */}
@@ -355,7 +367,7 @@ export default function Projects() {
             <button className="btn btn-primary" onClick={handleEdit} disabled={saving}>{saving ? 'Saving…' : 'Save Changes'}</button>
           </div>
         }>
-        <ProjectForm form={form} set={set} photoPreview={photoPreview} onPhotoChange={handlePhotoChange} onRemovePhoto={() => { resetPhoto(); setRemovePhoto(true) }} domains={data.domains} />
+        <ProjectForm form={form} set={set} photoPreview={photoPreview} onPhotoChange={handlePhotoChange} onRemovePhoto={() => { resetPhoto(); setRemovePhoto(true) }} domains={data.domains} goals={data.goals} />
       </Modal>
 
       <NotesUrlModal

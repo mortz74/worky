@@ -8,9 +8,10 @@ const mapOwner    = r => ({ id: r.id, name: r.name, email: r.email, role: r.role
 const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', notesUrl: r.notes_url || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false, authUserId: r.auth_user_id || null })
 const mapDomain      = r => ({ id: r.id, name: r.name })
 const mapDepartment  = r => ({ id: r.id, name: r.name })
-const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '', projectType: r.project_type || 'project', domain: r.domain || '', notesUrl: r.notes_url || '', createdBy: r.created_by || null, taskVisibility: r.task_visibility || 'assigned_only' })
+const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '', projectType: r.project_type || 'project', domain: r.domain || '', notesUrl: r.notes_url || '', createdBy: r.created_by || null, taskVisibility: r.task_visibility || 'assigned_only', goalId: r.goal_id || null })
 const mapCollaborator = r => ({ id: r.id, projectId: r.project_id, assigneeId: r.assignee_id, userId: r.user_id, createdAt: r.created_at })
 const mapReminder = r => ({ id: r.id, entityType: r.entity_type, entityId: r.entity_id, remindAt: r.remind_at, recurrence: r.recurrence || 'none', notes: r.notes || '' })
+const mapGoal = r => ({ id: r.id, name: r.name, desc: r.description || '', type: r.type || 'monthly', status: r.status || 'active', start: r.start_date || '', due: r.due_date || '', createdAt: r.created_at || '', createdBy: r.created_by || null })
 const mapWorkspaceMember = r => ({
   id: r.id,
   workspaceId: r.workspace_id,
@@ -44,6 +45,7 @@ const mapTask = r => {
     active:  r.status === 'done' ? false : r.active !== false,
     files:   r.files || [],
     domain:  r.domain || '',
+    goalId:  r.goal_id || null,
   }
 }
 
@@ -60,6 +62,7 @@ const toLocalTask = u => {
   if ('roadmap'     in u) m.roadmap   = u.roadmap
   if ('active'      in u) m.active    = u.active
   if ('domain'      in u) m.domain    = u.domain
+  if ('goal_id'     in u) m.goalId    = u.goal_id
   if (m.status === 'done') m.active = false
   return m
 }
@@ -79,6 +82,7 @@ const toLocalProject = u => {
   if ('domain'       in u) m.domain      = u.domain
   if ('notes_url'      in u) m.notesUrl      = u.notes_url
   if ('task_visibility' in u) m.taskVisibility = u.task_visibility
+  if ('goal_id'      in u) m.goalId      = u.goal_id
   return m
 }
 
@@ -106,8 +110,8 @@ export function AppProvider({ children }) {
   const [workspaceMembers, setWorkspaceMembers] = useState([])
   const [projectCollaborators, setProjectCollaborators] = useState([])
   const projectCollaboratorsRef = useRef([])
-  const dataRef = useRef({ owners: [], assignees: [], projects: [], tasks: [], domains: [], departments: [], reminders: [] })
-  const [data, setData]             = useState({ owners: [], assignees: [], projects: [], tasks: [], domains: [], departments: [], reminders: [] })
+  const dataRef = useRef({ owners: [], assignees: [], projects: [], tasks: [], domains: [], departments: [], reminders: [], goals: [] })
+  const [data, setData]             = useState({ owners: [], assignees: [], projects: [], tasks: [], domains: [], departments: [], reminders: [], goals: [] })
   const [toast, setToast]           = useState(null)
 
   // Keep latest values in refs so callbacks always have current values without stale closures
@@ -227,7 +231,7 @@ export function AppProvider({ children }) {
 
   // ── Data loading ──────────────────────────────────────────
   const loadData = useCallback(async (wsId) => {
-    const [owners, assignees, projects, tasks, domainsRes, departmentsRes, remindersRes, collaboratorsRes] = await Promise.all([
+    const [owners, assignees, projects, tasks, domainsRes, departmentsRes, remindersRes, collaboratorsRes, goalsRes] = await Promise.all([
       sb.from('owners').select('*').eq('user_id', wsId).order('created_at'),
       sb.from('assignees').select('*').eq('user_id', wsId).order('name'),
       sb.from('projects').select('*').eq('user_id', wsId).order('created_at'),
@@ -239,6 +243,7 @@ export function AppProvider({ children }) {
       sb.from('departments').select('*').eq('user_id', wsId).order('name'),
       sb.from('reminders').select('*').eq('user_id', wsId).order('remind_at'),
       sb.from('project_collaborators').select('*').eq('user_id', wsId).order('created_at'),
+      sb.from('goals').select('*').eq('user_id', wsId).order('created_at'),
     ])
     setProjectCollaborators((collaboratorsRes.data || []).map(mapCollaborator))
 
@@ -260,6 +265,7 @@ export function AppProvider({ children }) {
       domains:     domainRows.map(mapDomain),
       departments: (departmentsRes.data || []).map(mapDepartment),
       reminders:   (remindersRes.data || []).map(mapReminder),
+      goals:       (goalsRes.data || []).map(mapGoal),
     }
     setData(fresh)
     saveCache(wsId, fresh)
@@ -283,7 +289,7 @@ export function AppProvider({ children }) {
       const u = session?.user ?? null
       setUser(u)
       if (!u) {
-        setData({ owners: [], assignees: [], projects: [], tasks: [], domains: [], departments: [], reminders: [] })
+        setData({ owners: [], assignees: [], projects: [], tasks: [], domains: [], departments: [], reminders: [], goals: [] })
         setWorkspaceMembers([])
         try { localStorage.removeItem('worky-data-cache') } catch {}
         setWorkspaceId(null)
@@ -719,6 +725,45 @@ export function AppProvider({ children }) {
     return true
   }, [showToast])
 
+  // ── Goal mutations ────────────────────────────────────────
+  const createGoal = useCallback(async (row) => {
+    const wsId = workspaceIdRef.current
+    const goalRow = { ...row, user_id: wsId, created_by: user?.id }
+    const { data: res, error } = await sb.from('goals').insert(goalRow).select().single()
+    if (error) { showToast(error.message, 'error'); return null }
+    const goal = mapGoal(res)
+    setData(d => ({ ...d, goals: [...d.goals, goal] }))
+    return goal
+  }, [user, showToast])
+
+  const updateGoal = useCallback(async (goalId, updates) => {
+    const wsId = workspaceIdRef.current
+    const { error } = await sb.from('goals').update(updates).eq('id', goalId).eq('user_id', wsId)
+    if (error) { showToast(error.message, 'error'); return false }
+    setData(d => ({
+      ...d,
+      goals: d.goals.map(g => g.id === goalId ? mapGoal({
+        id: g.id, name: g.name, description: g.desc, type: g.type, status: g.status,
+        start_date: g.start, due_date: g.due, created_at: g.createdAt, created_by: g.createdBy,
+        ...updates,
+      }) : g),
+    }))
+    return true
+  }, [showToast])
+
+  const deleteGoal = useCallback(async (goalId) => {
+    const wsId = workspaceIdRef.current
+    const { error } = await sb.from('goals').delete().eq('id', goalId).eq('user_id', wsId)
+    if (error) { showToast(error.message, 'error'); return false }
+    setData(d => ({
+      ...d,
+      goals: d.goals.filter(g => g.id !== goalId),
+      tasks: d.tasks.map(t => t.goalId === goalId ? { ...t, goalId: null } : t),
+      projects: d.projects.map(p => p.goalId === goalId ? { ...p, goalId: null } : p),
+    }))
+    return true
+  }, [showToast])
+
   // ── Owner assignee ────────────────────────────────────────
   const setOwnerAssignee = useCallback(async (assigneeId) => {
     const wsId = workspaceIdRef.current
@@ -749,6 +794,7 @@ export function AppProvider({ children }) {
       createDepartment, deleteDepartment,
       createDomain, deleteDomain,
       createReminder, updateReminder, deleteReminder,
+      createGoal, updateGoal, deleteGoal,
       showToast, toast,
     }}>
       {children}

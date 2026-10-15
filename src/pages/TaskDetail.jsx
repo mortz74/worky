@@ -7,6 +7,7 @@ import FileList from '../components/FileList'
 import AddFileModal from '../components/AddFileModal'
 import ReminderSection from '../components/ReminderSection'
 import Modal from '../components/Modal'
+import { goalTypeMeta } from './Goals'
 
 function DeleteConfirmModal({ taskName, open, onClose, onConfirm }) {
   return (
@@ -235,6 +236,16 @@ export default function TaskDetail() {
                 <div>
                   <div className="form-label" style={{ marginBottom: 4 }}>Tags</div>
                   <TagsInput key={t.id + (t.tags||[]).join()} initialTags={t.tags || []} onSave={tags => save({ tags }, 'Tags saved')} />
+                </div>
+
+                <div>
+                  <div className="form-label" style={{ marginBottom: 4 }}>Goal</div>
+                  <select className="form-select" style={{ fontSize: 13 }}
+                    value={t.goalId || ''}
+                    onChange={e => save({ goal_id: e.target.value || null }, 'Goal updated')}>
+                    <option value="">— No goal —</option>
+                    {data.goals.map(g => <option key={g.id} value={g.id}>{goalTypeMeta(g.type).emoji} {g.name}</option>)}
+                  </select>
                 </div>
 
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApp } from '../contexts/AppContext'
 import Modal from './Modal'
 import MultiSelect from './MultiSelect'
+import { goalTypeMeta } from '../pages/Goals'
 
 export default function EditTaskModal({ task: t, open, onClose, onSave }) {
   const { data } = useApp()
@@ -17,6 +18,7 @@ export default function EditTaskModal({ task: t, open, onClose, onSave }) {
     tags: (t.tags || []).join(', '),
     roadmap: t.roadmap,
     domain: t.domain || '',
+    goalId: t.goalId || '',
   })
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -47,6 +49,7 @@ export default function EditTaskModal({ task: t, open, onClose, onSave }) {
       tags: form.tags.split(',').map(s => s.trim()).filter(Boolean),
       roadmap: form.roadmap,
       domain: effectiveDomain || null,
+      goal_id: form.goalId || null,
       ...(form.status === 'done' ? { active: false } : {}),
     }, 'Task updated!')
     setSaving(false)
@@ -125,6 +128,13 @@ export default function EditTaskModal({ task: t, open, onClose, onSave }) {
       <div className="form-group">
         <label className="form-label">Tags (comma separated)</label>
         <input className="form-input" value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="tag1, tag2, …" />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Goal</label>
+        <select className="form-select" value={form.goalId} onChange={e => set('goalId', e.target.value)}>
+          <option value="">— No goal —</option>
+          {data.goals.map(g => <option key={g.id} value={g.id}>{goalTypeMeta(g.type).emoji} {g.name}</option>)}
+        </select>
       </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
         <input type="checkbox" checked={form.roadmap} onChange={e => set('roadmap', e.target.checked)} />

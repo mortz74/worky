@@ -10,6 +10,7 @@ import Tasks from './pages/Tasks'
 import TaskDetail from './pages/TaskDetail'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
+import Goals from './pages/Goals'
 import Assignees from './pages/Assignees'
 import AssigneeDetail from './pages/AssigneeDetail'
 import Settings from './pages/Settings'
@@ -61,6 +62,7 @@ function AppShell() {
           <Route path="/tasks/:id" element={<TaskDetail />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
+          <Route path="/goals" element={<Goals />} />
           <Route path="/assignees" element={<Assignees />} />
           <Route path="/assignees/:id" element={<AssigneeDetail />} />
           <Route path="/files" element={<Files />} />

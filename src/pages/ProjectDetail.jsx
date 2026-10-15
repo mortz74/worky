@@ -7,6 +7,7 @@ import FileList from '../components/FileList'
 import AddFileModal from '../components/AddFileModal'
 import QuickTaskModal from '../components/QuickTaskModal'
 import AddAssigneeModal from '../components/AddAssigneeModal'
+import { goalTypeMeta } from './Goals'
 
 const fmt = d => { if (!d) return '—'; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 
@@ -346,6 +347,19 @@ export default function ProjectDetail() {
                     value={p.due ? p.due.slice(0, 10) : ''}
                     onChange={e => saveProject({ due_date: e.target.value || null }, 'Due date updated')}
                   />
+                </div>
+
+                <div>
+                  <div className="form-label" style={{ marginBottom: 4 }}>Goal</div>
+                  <select
+                    className="form-select"
+                    style={{ fontSize: 13 }}
+                    value={p.goalId || ''}
+                    onChange={e => saveProject({ goal_id: e.target.value || null }, 'Goal updated')}
+                  >
+                    <option value="">— No goal —</option>
+                    {data.goals.map(g => <option key={g.id} value={g.id}>{goalTypeMeta(g.type).emoji} {g.name}</option>)}
+                  </select>
                 </div>
 
                 <div>

@@ -9,9 +9,50 @@ import AddAssigneeModal from '../components/AddAssigneeModal'
 import AddDueDateModal from '../components/AddDueDateModal'
 import AddReminderModal from '../components/AddReminderModal'
 import Modal from '../components/Modal'
+import { goalTypeMeta } from './Goals'
 
 const fmt = d => { if (!d) return '—'; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 const isOverdue = d => { if (!d) return false; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day) < new Date() }
+
+function GoalMiniCard({ goal, tasks, projects, onClick }) {
+  const meta = goalTypeMeta(goal.type)
+  const done = tasks.filter(t => t.status === 'done').length
+  const pct = tasks.length ? Math.round(done / tasks.length * 100) : 0
+  const linkCount = tasks.length + projects.length
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        border: '1px solid var(--slate-200)', borderRadius: 10, padding: '12px 14px',
+        cursor: 'pointer', transition: 'box-shadow .15s, transform .1s', background: 'var(--slate-50)',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.08)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none' }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <span style={{ fontSize: 15 }}>{meta.emoji}</span>
+        <span style={{
+          fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em',
+          color: 'var(--slate-400)',
+        }}>{meta.label}</span>
+      </div>
+      <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{goal.name}</div>
+      {linkCount > 0 ? (
+        <>
+          <div style={{ height: 4, background: 'var(--slate-200)', borderRadius: 3 }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: 'var(--blue-500)', borderRadius: 3 }} />
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--slate-400)', marginTop: 4 }}>
+            {tasks.length > 0 ? `${done}/${tasks.length} tasks done` : `${projects.length} project${projects.length === 1 ? '' : 's'}`}
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 11, color: 'var(--slate-400)', fontStyle: 'italic' }}>No tasks or projects yet</div>
+      )}
+    </div>
+  )
+}
 
 function DashboardTaskRow({ task, onEdit, onMenuAction, onAddAssignee, onAddDueDate, onAddReminder, onDelete }) {
   const { data, updateTask, showToast, currentAssigneeId } = useApp()
@@ -147,6 +188,8 @@ export default function Dashboard() {
   const unassignedCount = tasks.filter(t => t.status !== 'done' && !t.roadmap && (t.assigneeIds||[]).length === 0 && t.active !== false).length
   const completedCount  = tasks.filter(t => t.status === 'done' && t.createdAt && new Date(t.createdAt) >= sevenDaysAgo).length
 
+  const activeGoals = data.goals.filter(g => g.status === 'active')
+
   const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1)
 
   // Section 1: In Progress — overdue or due today, sorted earliest due first
@@ -239,6 +282,27 @@ export default function Dashboard() {
           </div>
 
         </div>
+
+        {/* Current Goals — prominent, below metrics, above In Progress */}
+        {activeGoals.length > 0 && (
+          <div className="card" style={{ padding: '18px 22px', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>🎯 Current Goals <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--slate-400)', marginLeft: 6 }}>({activeGoals.length})</span></div>
+              <span className="link" style={{ fontSize: 13, color: 'var(--blue-600)', cursor: 'pointer' }} onClick={() => navigate('/goals')}>View All →</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+              {activeGoals.map(g => (
+                <GoalMiniCard
+                  key={g.id}
+                  goal={g}
+                  tasks={data.tasks.filter(t => t.goalId === g.id)}
+                  projects={data.projects.filter(p => p.goalId === g.id)}
+                  onClick={() => navigate('/goals')}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Section 1 — In Progress: Overdue & Due Today */}
         <div className="card" style={{ padding: '18px 22px', marginBottom: 16 }}>

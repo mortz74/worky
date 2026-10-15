@@ -13,6 +13,7 @@ import AddAssigneeModal from '../components/AddAssigneeModal'
 import AddProjectModal from '../components/AddProjectModal'
 import AddDueDateModal from '../components/AddDueDateModal'
 import AddReminderModal from '../components/AddReminderModal'
+import { goalTypeMeta } from './Goals'
 
 const fmt = d => { if (!d) return '—'; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) }
 const isOverdue = d => { if (!d) return false; const [y,m,day] = d.slice(0,10).split('-').map(Number); return new Date(y, m-1, day) < new Date() }
@@ -203,13 +204,13 @@ function AddTaskModal({ open, onClose }) {
   const [form, setForm] = useState({
     name: '', desc: '', projectIds: [], assigneeIds: [],
     ownerId: '', status: 'inprogress', start: '', due: '',
-    tags: '', roadmap: false, active: true, domain: '',
+    tags: '', roadmap: false, active: true, domain: '', goalId: '',
   })
   const [saving, setSaving] = useState(false)
   const [reminderEnabled, setReminderEnabled] = useState(false)
   const [reminder, setReminder] = useState({ remindAt: '', recurrence: 'none', notes: '' })
 
-  const BLANK = { name: '', desc: '', projectIds: [], assigneeIds: [], ownerId: '', status: 'inprogress', start: '', due: '', tags: '', roadmap: false, active: true, domain: '' }
+  const BLANK = { name: '', desc: '', projectIds: [], assigneeIds: [], ownerId: '', status: 'inprogress', start: '', due: '', tags: '', roadmap: false, active: true, domain: '', goalId: '' }
 
   useEffect(() => {
     if (open) {
@@ -249,6 +250,7 @@ function AddTaskModal({ open, onClose }) {
       assignee_ids: form.assigneeIds,
       project_ids: form.projectIds,
       domain: effectiveDomain || null,
+      goal_id: form.goalId || null,
     }
     const task = await createTask(row)
     if (task && reminderEnabled && reminder.remindAt) {
@@ -315,6 +317,13 @@ function AddTaskModal({ open, onClose }) {
       <div className="form-group">
         <label className="form-label">Tags (comma separated)</label>
         <input className="form-input" value={form.tags} onChange={e => set('tags', e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Goal</label>
+        <select className="form-select" value={form.goalId} onChange={e => set('goalId', e.target.value)}>
+          <option value="">— No goal —</option>
+          {data.goals.map(g => <option key={g.id} value={g.id}>{goalTypeMeta(g.type).emoji} {g.name}</option>)}
+        </select>
       </div>
       <div style={{ display: 'flex', gap: 20 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
@@ -387,6 +396,8 @@ export default function Tasks() {
   const [addDueDateTask, setAddDueDateTask]   = useState(null)
   const [addReminderTask, setAddReminderTask]   = useState(null)
   const [deleteTaskItem, setDeleteTaskItem]   = useState(null)
+  const [bulkAssigneeOpen, setBulkAssigneeOpen] = useState(false)
+  const [bulkProjectOpen, setBulkProjectOpen]   = useState(false)
 
   useEffect(() => {
     if (searchParams.get('new')) setShowAdd(true)
@@ -537,6 +548,26 @@ export default function Tasks() {
     await deleteTask(deleteTaskItem.id)
     showToast('Task deleted', 'success')
     setDeleteTaskItem(null)
+  }
+
+  const handleBulkStatus = async (status) => {
+    if (!status) return
+    const updates = status === 'done' ? { status, active: false } : { status }
+    await Promise.all([...selected].map(id => updateTask(id, updates)))
+    setSelected(new Set())
+    showToast('Status updated', 'success')
+  }
+  const handleBulkAssignee = async (assigneeIds) => {
+    await Promise.all([...selected].map(id => updateTask(id, { assignee_ids: assigneeIds })))
+    setSelected(new Set())
+    setBulkAssigneeOpen(false)
+    showToast('Assignees updated', 'success')
+  }
+  const handleBulkProject = async (projectIds) => {
+    await Promise.all([...selected].map(id => updateTask(id, { project_ids: projectIds })))
+    setSelected(new Set())
+    setBulkProjectOpen(false)
+    showToast('Projects updated', 'success')
   }
 
   // ── Per-tab menu item factory ──────────────────────────────
@@ -739,11 +770,35 @@ export default function Tasks() {
 
         {/* ── Bulk action bar ── */}
         {selected.size > 0 && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 14px', background: 'var(--blue-50)', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
-            <span style={{ fontWeight: 600 }}>{selected.size} selected</span>
-            <button className="btn btn-sm btn-secondary" onClick={async () => { for (const id of selected) await updateTask(id, { status: 'inprogress' }); setSelected(new Set()); showToast('Updated', 'success') }}>In Progress</button>
-            <button className="btn btn-sm btn-secondary" onClick={async () => { for (const id of selected) await updateTask(id, { status: 'done', active: false }); setSelected(new Set()); showToast('Marked done', 'success') }}>Mark Done</button>
-            <button className="btn btn-sm btn-secondary" onClick={() => setSelected(new Set())}>Clear</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', background: 'var(--blue-50)', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
+            <span style={{ fontWeight: 600, marginRight: 4 }}>{selected.size} selected</span>
+
+            {/* Change Status */}
+            <select
+              className="btn btn-sm btn-secondary"
+              style={{ cursor: 'pointer' }}
+              defaultValue=""
+              onChange={e => { handleBulkStatus(e.target.value); e.target.value = '' }}
+            >
+              <option value="" disabled>Change Status…</option>
+              <option value="inbox">Inbox</option>
+              <option value="todo">To Do</option>
+              <option value="inprogress">In Progress</option>
+              <option value="waiting">Waiting</option>
+              <option value="done">Done</option>
+            </select>
+
+            {/* Change Assignee */}
+            <button className="btn btn-sm btn-secondary" onClick={() => setBulkAssigneeOpen(true)}>
+              👤 Change Assignee
+            </button>
+
+            {/* Change Project */}
+            <button className="btn btn-sm btn-secondary" onClick={() => setBulkProjectOpen(true)}>
+              📁 Change Project
+            </button>
+
+            <button className="btn btn-sm btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setSelected(new Set())}>✕ Clear</button>
           </div>
         )}
 
@@ -843,6 +898,21 @@ export default function Tasks() {
         open={!!deleteTaskItem}
         onClose={() => setDeleteTaskItem(null)}
         onConfirm={handleDelete}
+      />
+
+      {/* ── Bulk modals ── */}
+      <AddAssigneeModal
+        task={null}
+        open={bulkAssigneeOpen}
+        onClose={() => setBulkAssigneeOpen(false)}
+        onSave={handleBulkAssignee}
+      />
+
+      <AddProjectModal
+        task={null}
+        open={bulkProjectOpen}
+        onClose={() => setBulkProjectOpen(false)}
+        onSave={handleBulkProject}
       />
     </div>
   )
