@@ -84,6 +84,13 @@ export default function Files() {
   const [editSaving, setEditSaving]       = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
+  // ── Bulk select ────────────────────────────────────────────
+  const [selected, setSelected]   = useState(new Set())
+  const [bulkField, setBulkField] = useState(null) // 'assignees' | 'projects'
+  const [bulkMode, setBulkMode]   = useState('add') // 'add' | 'replace' | 'remove'
+  const [bulkIds, setBulkIds]     = useState([])
+  const [bulkSaving, setBulkSaving] = useState(false)
+
   useEffect(() => {
     if (!user) return
     fetchFiles()
@@ -173,6 +180,56 @@ export default function Files() {
   const paginated = sorted.slice((page - 1) * pageSize, page * pageSize)
 
   const hasFilters = filterAssigneeIds.length > 0 || filterProjectIds.length > 0 || dateFrom || dateTo
+
+  // ── Bulk select ────────────────────────────────────────────
+  const toggleSelect = id => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const allSelected  = sorted.length > 0 && sorted.every(f => selected.has(f.id))
+  const toggleAll    = () => setSelected(allSelected ? new Set() : new Set(sorted.map(f => f.id)))
+
+  const openBulk = field => { setBulkField(field); setBulkMode('add'); setBulkIds([]) }
+
+  const handleBulkSave = async () => {
+    const isAssignees = bulkField === 'assignees'
+    const table  = isAssignees ? 'assignee_files' : 'project_files'
+    const fkCol  = isAssignees ? 'assignee_id' : 'project_id'
+    const key    = isAssignees ? 'assignees' : 'projects'
+    const lookup = isAssignees ? data.assignees : data.projects
+    const fileIds = [...selected]
+    setBulkSaving(true)
+
+    // Work out the final set of ids for each file, then rewrite only files that change
+    const changes = fileIds.map(fid => {
+      const file = files.find(f => f.id === fid)
+      const current = (file?.[key] || []).map(x => x.id)
+      let next
+      if (bulkMode === 'replace')     next = [...bulkIds]
+      else if (bulkMode === 'remove') next = current.filter(id => !bulkIds.includes(id))
+      else                            next = [...current, ...bulkIds.filter(id => !current.includes(id))]
+      const same = next.length === current.length && next.every(id => current.includes(id))
+      return { fid, next, same }
+    }).filter(c => !c.same)
+
+    if (changes.length > 0) {
+      const changedIds = changes.map(c => c.fid)
+      const { error: delErr } = await sb.from(table).delete().in('file_id', changedIds).eq('user_id', user.id)
+      if (delErr) { showToast(delErr.message, 'error'); setBulkSaving(false); return }
+      const rows = changes.flatMap(c => c.next.map(id => ({ [fkCol]: id, file_id: c.fid, user_id: user.id })))
+      if (rows.length > 0) {
+        const { error: insErr } = await sb.from(table).insert(rows)
+        if (insErr) { showToast(insErr.message, 'error'); setBulkSaving(false); fetchFiles(); return }
+      }
+      const nextById = Object.fromEntries(changes.map(c => [c.fid, c.next]))
+      setFiles(fs => fs.map(f => nextById[f.id]
+        ? { ...f, [key]: nextById[f.id].map(id => lookup.find(x => x.id === id)).filter(Boolean) }
+        : f
+      ))
+    }
+
+    showToast(`${isAssignees ? 'Assignees' : 'Projects'} updated on ${changes.length} file${changes.length === 1 ? '' : 's'}`)
+    setBulkSaving(false)
+    setBulkField(null)
+    setSelected(new Set())
+  }
 
   // ── Archive toggle ─────────────────────────────────────────
   const handleToggleArchive = async (file) => {
@@ -363,6 +420,16 @@ export default function Files() {
           </button>
         </div>
 
+        {/* ── Bulk action bar ── */}
+        {selected.size > 0 && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', background: 'var(--blue-50)', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
+            <span style={{ fontWeight: 600, marginRight: 4 }}>{selected.size} selected</span>
+            <button className="btn btn-sm btn-secondary" onClick={() => openBulk('assignees')}>👤 Change Assignees</button>
+            <button className="btn btn-sm btn-secondary" onClick={() => openBulk('projects')}>📁 Change Projects</button>
+            <button className="btn btn-sm btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setSelected(new Set())}>✕ Clear</button>
+          </div>
+        )}
+
         {/* ── Table ── */}
         <div className="card" style={{ overflowX: 'auto' }}>
           {loading ? (
@@ -375,6 +442,9 @@ export default function Files() {
             <table className="task-table">
               <thead>
                 <tr>
+                  <th style={{ width: 32 }}>
+                    <input type="checkbox" checked={allSelected} onChange={toggleAll} title="Select all" />
+                  </th>
                   <th style={thStyle('name')} onClick={() => handleSort('name')}>
                     FILE NAME <SortIcon col="name" sortCol={sortCol} sortDir={sortDir} />
                   </th>
@@ -394,7 +464,11 @@ export default function Files() {
               </thead>
               <tbody>
                 {paginated.map(file => (
-                  <tr key={file.id} style={{ opacity: file.archived ? 0.6 : 1 }}>
+                  <tr key={file.id} className={selected.has(file.id) ? 'selected' : ''} style={{ opacity: file.archived ? 0.6 : 1 }}>
+                    <td onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected.has(file.id)} onChange={() => toggleSelect(file.id)} />
+                    </td>
+
                     {/* File Name */}
                     <td style={{ fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {file.link ? (
@@ -582,6 +656,59 @@ export default function Files() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk Assignees / Projects Modal ── */}
+      {bulkField && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onMouseDown={e => { if (e.target === e.currentTarget && !bulkSaving) setBulkField(null) }}>
+          <div style={{ background: 'var(--white)', borderRadius: 12, width: 440, maxWidth: '95vw', boxShadow: 'var(--shadow-xl)', padding: '28px 28px 24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontWeight: 700, fontSize: 17 }}>Change {bulkField === 'assignees' ? 'Assignees' : 'Projects'}</span>
+              <button onClick={() => setBulkField(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)', padding: 4 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--slate-500)', margin: '0 0 18px' }}>
+              Applies to {selected.size} selected file{selected.size === 1 ? '' : 's'}.
+            </p>
+
+            <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+              {[
+                { id: 'add',     label: 'Add' },
+                { id: 'replace', label: 'Replace' },
+                { id: 'remove',  label: 'Remove' },
+              ].map(m => (
+                <button key={m.id} type="button"
+                  className={`btn btn-sm ${bulkMode === m.id ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setBulkMode(m.id)}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--slate-500)', marginBottom: 8 }}>
+              {bulkMode === 'add'     && 'Selected items are added; existing ones are kept.'}
+              {bulkMode === 'replace' && 'Existing items are replaced with the selection. Leave empty to clear all.'}
+              {bulkMode === 'remove'  && 'Selected items are removed from these files.'}
+            </div>
+
+            {bulkField === 'assignees' ? (
+              <MultiSelect options={data.assignees.map(a => ({ id: a.id, label: a.name }))}
+                value={bulkIds} onChange={setBulkIds} placeholder="Select assignees…" />
+            ) : (
+              <MultiSelect options={data.projects.map(p => ({ id: p.id, label: p.name, prefix: p.emoji }))}
+                value={bulkIds} onChange={setBulkIds} placeholder="Select projects…" />
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setBulkField(null)} disabled={bulkSaving}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={handleBulkSave}
+                disabled={bulkSaving || (bulkMode !== 'replace' && bulkIds.length === 0)}>
+                {bulkSaving ? 'Saving…' : 'Apply'}
+              </button>
+            </div>
           </div>
         </div>
       )}
