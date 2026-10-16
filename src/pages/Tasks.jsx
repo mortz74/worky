@@ -398,6 +398,8 @@ export default function Tasks() {
   const [deleteTaskItem, setDeleteTaskItem]   = useState(null)
   const [bulkAssigneeOpen, setBulkAssigneeOpen] = useState(false)
   const [bulkProjectOpen, setBulkProjectOpen]   = useState(false)
+  const [bulkDueOpen, setBulkDueOpen]           = useState(false)
+  const [bulkDeleteOpen, setBulkDeleteOpen]     = useState(false)
 
   useEffect(() => {
     if (searchParams.get('new')) setShowAdd(true)
@@ -568,6 +570,19 @@ export default function Tasks() {
     setSelected(new Set())
     setBulkProjectOpen(false)
     showToast('Projects updated', 'success')
+  }
+  const handleBulkDueDate = async (due) => {
+    await Promise.all([...selected].map(id => updateTask(id, { due_date: due })))
+    setSelected(new Set())
+    setBulkDueOpen(false)
+    showToast(due ? 'Due date set' : 'Due date cleared', 'success')
+  }
+  const handleBulkDelete = async () => {
+    const count = selected.size
+    await Promise.all([...selected].map(id => deleteTask(id)))
+    setSelected(new Set())
+    setBulkDeleteOpen(false)
+    showToast(`${count} task${count === 1 ? '' : 's'} deleted`, 'success')
   }
 
   // ── Per-tab menu item factory ──────────────────────────────
@@ -788,6 +803,16 @@ export default function Tasks() {
               <option value="done">Done</option>
             </select>
 
+            <button className="btn btn-sm btn-secondary" onClick={() => handleBulkStatus('inprogress')}>
+              ▶️ Mark In Progress
+            </button>
+            <button className="btn btn-sm btn-secondary" onClick={() => handleBulkStatus('done')}>
+              ✅ Mark Completed
+            </button>
+            <button className="btn btn-sm btn-secondary" onClick={() => setBulkDueOpen(true)}>
+              📅 Change Due Date
+            </button>
+
             {/* Change Assignee */}
             <button className="btn btn-sm btn-secondary" onClick={() => setBulkAssigneeOpen(true)}>
               👤 Change Assignee
@@ -796,6 +821,10 @@ export default function Tasks() {
             {/* Change Project */}
             <button className="btn btn-sm btn-secondary" onClick={() => setBulkProjectOpen(true)}>
               📁 Change Project
+            </button>
+
+            <button className="btn btn-sm btn-secondary" style={{ color: '#ef4444', borderColor: '#ef4444' }} onClick={() => setBulkDeleteOpen(true)}>
+              🗑 Delete
             </button>
 
             <button className="btn btn-sm btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setSelected(new Set())}>✕ Clear</button>
@@ -901,6 +930,27 @@ export default function Tasks() {
       />
 
       {/* ── Bulk modals ── */}
+      {bulkDueOpen && (
+        <AddDueDateModal
+          task={null}
+          open={bulkDueOpen}
+          onClose={() => setBulkDueOpen(false)}
+          onSave={handleBulkDueDate}
+        />
+      )}
+
+      <Modal open={bulkDeleteOpen} onClose={() => setBulkDeleteOpen(false)} title="Delete Tasks"
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={() => setBulkDeleteOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" style={{ background: '#ef4444' }} onClick={handleBulkDelete}>Delete {selected.size}</button>
+          </>
+        }>
+        <p style={{ color: 'var(--slate-600)', fontSize: 14, margin: 0 }}>
+          Are you sure you want to delete <strong>{selected.size} selected task{selected.size === 1 ? '' : 's'}</strong>? This action cannot be undone.
+        </p>
+      </Modal>
+
       <AddAssigneeModal
         task={null}
         open={bulkAssigneeOpen}
