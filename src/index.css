@@ -261,6 +261,9 @@ body {
 .task-table tr:last-child td { border-bottom: none; }
 .task-table tr:hover td { background: var(--blue-50); }
 .task-table tr.selected td { background: #eff6ff; }
+.task-table tr.task-group-row td { background: var(--slate-50); font-weight: 700; font-size: 12px; color: var(--slate-700); cursor: pointer; user-select: none; padding: 8px 14px; border-top: 1px solid var(--slate-200); }
+.task-table tr.task-group-row:hover td { background: var(--slate-100); }
+.task-group-caret { display: inline-block; width: 16px; color: var(--slate-400); }
 .task-check { width: 30px; }
 .task-check input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--blue-600); }
 .task-name-cell { font-weight: 600; color: var(--slate-800); }

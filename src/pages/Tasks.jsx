@@ -27,6 +27,18 @@ const TABS = [
   { key: 'all',        label: 'All Tasks' },
 ]
 
+const GROUP_OPTIONS = [
+  { key: '',         label: 'No grouping' },
+  { key: 'project',  label: 'Project' },
+  { key: 'assignee', label: 'Assignee' },
+  { key: 'status',   label: 'Status' },
+]
+
+// Default grouping per tab; tabs not listed are ungrouped
+const DEFAULT_GROUP_BY = { todo: 'project', waiting: 'assignee', roadmap: 'assignee' }
+
+const STATUS_LABELS = { todo: 'Inbox', inprogress: 'In Progress', done: 'Done' }
+
 // ── AvatarStack ────────────────────────────────────────────
 function AvatarStack({ assigneeIds = [], size = 24 }) {
   if (assigneeIds.length === 0) return <span style={{ color: 'var(--slate-300)', fontSize: 12 }}>—</span>
@@ -382,8 +394,10 @@ export default function Tasks() {
   const [statusF, setStatusF]   = useState('')
   const [assigneeF, setAssigneeF] = useState('')
   const [roadmapF, setRoadmapF] = useState('')
+  const [groupBy, setGroupBy]   = useState(() => DEFAULT_GROUP_BY[searchParams.get('tab') || 'inbox'] || '')
+  const [collapsed, setCollapsed] = useState(new Set())
 
-  const [page, setPage]           = useState(1)
+  const [page, setPage]         = useState(1)
   const [pageSize, setPageSize]   = useState(10)
   const [selected, setSelected]   = useState(new Set())
   const [showAdd, setShowAdd]     = useState(false)
@@ -422,9 +436,12 @@ export default function Tasks() {
     setStatusF('')
     setAssigneeF('')
     setRoadmapF('')
+    setGroupBy(DEFAULT_GROUP_BY[activeTab] || '')
     setSelected(new Set())
     setPage(1)
   }, [activeTab])
+
+  useEffect(() => { setCollapsed(new Set()) }, [activeTab, groupBy])
 
   // Reset to page 1 when filters change
   useEffect(() => { setPage(1) }, [search, projectF, domainF, activeF, statusF, assigneeF, roadmapF])
@@ -494,6 +511,38 @@ export default function Tasks() {
 
   const filtered = visibleTasks.filter(filterByTab).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize)
+
+  // ── Grouping ──────────────────────────────────────────────
+  // A task with several projects/assignees appears under each of them.
+  // Grouped view shows every task (no pagination) so groups aren't split across pages.
+  const groups = (() => {
+    if (!groupBy) return null
+    const map = new Map()
+    const add = (key, label, task) => {
+      if (!map.has(key)) map.set(key, { key, label, tasks: [] })
+      map.get(key).tasks.push(task)
+    }
+    filtered.forEach(t => {
+      if (groupBy === 'project') {
+        const projs = (t.projectIds || []).map(id => data.projects.find(p => p.id === id)).filter(Boolean)
+        if (projs.length === 0) add('__none', 'No Project', t)
+        else projs.forEach(p => add(p.id, `${p.emoji ? p.emoji + ' ' : ''}${p.name}`, t))
+      } else if (groupBy === 'assignee') {
+        const people = (t.assigneeIds || []).map(id => data.assignees.find(a => a.id === id)).filter(Boolean)
+        if (people.length === 0) add('__none', 'Unassigned', t)
+        else people.forEach(a => add(a.id, a.name, t))
+      } else if (groupBy === 'status') {
+        add(t.status, STATUS_LABELS[t.status] || t.status, t)
+      }
+    })
+    return [...map.values()].sort((a, b) => {
+      if (a.key === '__none') return 1
+      if (b.key === '__none') return -1
+      return a.label.localeCompare(b.label)
+    })
+  })()
+
+  const toggleGroup = key => setCollapsed(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
 
   // ── Tab badge counts ───────────────────────────────────────
   const tabCount = (tabKey) => visibleTasks.filter(t => {
@@ -781,6 +830,11 @@ export default function Tasks() {
               <option value="yes">Only Roadmap</option>
             </select>
           )}
+
+          {/* Group by — all tabs */}
+          <select className="filter-select" value={groupBy} onChange={e => setGroupBy(e.target.value)} title="Group by">
+            {GROUP_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.key ? `Group: ${o.label}` : o.label}</option>)}
+          </select>
         </div>
 
         {/* ── Bulk action bar ── */}
@@ -845,27 +899,55 @@ export default function Tasks() {
                   {colHeaders()}
                 </tr>
               </thead>
-              <tbody>
-                {paginated.map(t => (
-                  <TaskRow
-                    key={t.id}
-                    task={t}
-                    selected={selected.has(t.id)}
-                    onToggleSelect={toggleSelect}
-                    columns={columns}
-                    menuItems={getMenuItems(t)}
-                    activeTab={activeTab}
-                  />
-                ))}
-              </tbody>
+              {groups ? groups.map(g => {
+                const isCollapsed = collapsed.has(g.key)
+                return (
+                  <tbody key={g.key}>
+                    <tr className="task-group-row" onClick={() => toggleGroup(g.key)}>
+                      <td colSpan={3 + columns.length}>
+                        <span className="task-group-caret">{isCollapsed ? '▸' : '▾'}</span>
+                        {g.label}
+                        <span className="page-tab-count" style={{ marginLeft: 8 }}>{g.tasks.length}</span>
+                      </td>
+                    </tr>
+                    {!isCollapsed && g.tasks.map(t => (
+                      <TaskRow
+                        key={t.id}
+                        task={t}
+                        selected={selected.has(t.id)}
+                        onToggleSelect={toggleSelect}
+                        columns={columns}
+                        menuItems={getMenuItems(t)}
+                        activeTab={activeTab}
+                      />
+                    ))}
+                  </tbody>
+                )
+              }) : (
+                <tbody>
+                  {paginated.map(t => (
+                    <TaskRow
+                      key={t.id}
+                      task={t}
+                      selected={selected.has(t.id)}
+                      onToggleSelect={toggleSelect}
+                      columns={columns}
+                      menuItems={getMenuItems(t)}
+                      activeTab={activeTab}
+                    />
+                  ))}
+                </tbody>
+              )}
             </table>
-            <Pagination
-              total={filtered.length}
-              page={page}
-              pageSize={pageSize}
-              onPageChange={setPage}
-              onPageSizeChange={setPageSize}
-            />
+            {!groups && (
+              <Pagination
+                total={filtered.length}
+                page={page}
+                pageSize={pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+              />
+            )}
           </div>
           )}
         </div>
