@@ -97,7 +97,7 @@ function DeleteConfirmModal({ task, open, onClose, onConfirm }) {
 export default function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data, updateTask, updateProject, deleteTask, createReminder, showToast, fetchFilesForProject, addFileToEntity, removeFileFromEntity, setFileArchived, isAdmin, projectCollaborators, addProjectCollaborator, removeProjectCollaborator, setProjectTaskVisibility, currentAssigneeId } = useApp()
+  const { data, updateTask, updateProject, deleteTask, createReminder, showToast, fetchFilesForProject, addFileToEntity, removeFileFromEntity, setFileArchived, setFilePinned, isAdmin, projectCollaborators, addProjectCollaborator, removeProjectCollaborator, setProjectTaskVisibility, currentAssigneeId } = useApp()
   const [activeTab, setActiveTab]     = useState('tasks')
   const [files, setFiles]             = useState([])
   const [showAddFile, setShowAddFile] = useState(false)
@@ -132,6 +132,10 @@ export default function ProjectDetail() {
   const handleRemoveFile  = async (fileId) => { await removeFileFromEntity('project', id, fileId); loadFiles() }
   const handleArchiveFile = async (fileId) => { await setFileArchived(fileId, true);  loadFiles() }
   const handleUnarchive   = async (fileId) => { await setFileArchived(fileId, false); loadFiles() }
+  const handleTogglePin = async (fileId, pinned) => {
+    setFiles(fs => fs.map(f => f.id === fileId ? { ...f, pinned } : f))
+    if (!await setFilePinned('project', id, fileId, pinned)) loadFiles()
+  }
 
   const p = data.projects.find(p => p.id === id)
   if (!p) return <div className="page active"><div className="page-content" style={{ padding: 40, textAlign: 'center', color: 'var(--slate-400)' }}>Project not found.</div></div>
@@ -301,6 +305,7 @@ export default function ProjectDetail() {
               onDelete={handleRemoveFile}
               onArchive={handleArchiveFile}
               onUnarchive={handleUnarchive}
+              onTogglePin={handleTogglePin}
             />
             <AddFileModal
               open={showAddFile}

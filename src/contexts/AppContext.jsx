@@ -584,11 +584,11 @@ export function AppProvider({ children }) {
     if (!wsId) return []
     const { data: rows, error } = await sb
       .from('assignee_files')
-      .select('file_id, files(*)')
+      .select('file_id, pinned, files(*)')
       .eq('assignee_id', assigneeId)
       .eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return [] }
-    return (rows || []).map(r => r.files).filter(Boolean)
+    return (rows || []).filter(r => r.files).map(r => ({ ...r.files, pinned: !!r.pinned }))
   }, [showToast])
 
   const fetchFilesForProject = useCallback(async (projectId) => {
@@ -596,11 +596,11 @@ export function AppProvider({ children }) {
     if (!wsId) return []
     const { data: rows, error } = await sb
       .from('project_files')
-      .select('file_id, files(*)')
+      .select('file_id, pinned, files(*)')
       .eq('project_id', projectId)
       .eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return [] }
-    return (rows || []).map(r => r.files).filter(Boolean)
+    return (rows || []).filter(r => r.files).map(r => ({ ...r.files, pinned: !!r.pinned }))
   }, [showToast])
 
   const fetchFilesForTask = useCallback(async (taskId) => {
@@ -654,6 +654,19 @@ export function AppProvider({ children }) {
       .from('files')
       .update({ archived })
       .eq('id', fileId)
+      .eq('user_id', wsId)
+    if (error) { showToast(error.message, 'error'); return false }
+    return true
+  }, [showToast])
+
+  // Pinning is per entity (stored on the junction row), so a file can be pinned on one page and not another
+  const setFilePinned = useCallback(async (type, entityId, fileId, pinned) => {
+    const wsId = workspaceIdRef.current
+    const { error } = await sb
+      .from(junctionTable(type))
+      .update({ pinned })
+      .eq(junctionFk(type), entityId)
+      .eq('file_id', fileId)
       .eq('user_id', wsId)
     if (error) { showToast(error.message, 'error'); return false }
     return true
@@ -790,7 +803,7 @@ export function AppProvider({ children }) {
       updateAssignee, createAssignee, setOwnerAssignee,
       addWorkspaceMember, removeWorkspaceMember, loadWorkspaceMembers,
       fetchFilesForAssignee, fetchFilesForProject, fetchFilesForTask,
-      addFileToEntity, removeFileFromEntity, setFileArchived,
+      addFileToEntity, removeFileFromEntity, setFileArchived, setFilePinned,
       createDepartment, deleteDepartment,
       createDomain, deleteDomain,
       createReminder, updateReminder, deleteReminder,

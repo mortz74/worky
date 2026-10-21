@@ -36,6 +36,13 @@ const TrashIcon = () => (
   </svg>
 )
 
+const PinIcon = ({ filled }) => (
+  <svg viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" width="15" height="15">
+    <line x1="12" y1="17" x2="12" y2="22"/>
+    <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+  </svg>
+)
+
 function SortIcon({ active, dir }) {
   if (!active) return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10" style={{ opacity: 0.3, marginLeft: 3 }}>
@@ -47,7 +54,7 @@ function SortIcon({ active, dir }) {
     : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="10" height="10" style={{ marginLeft: 3, color: 'var(--blue-500)' }}><polyline points="19 12 12 19 5 12"/></svg>
 }
 
-export default function FileList({ files = [], onAdd, onDelete, onArchive, onUnarchive }) {
+export default function FileList({ files = [], onAdd, onDelete, onArchive, onUnarchive, onTogglePin }) {
   const [showArchived, setShowArchived] = useState(false)
   const [sortDir, setSortDir]           = useState('desc')
   const [page, setPage]                 = useState(1)
@@ -56,6 +63,8 @@ export default function FileList({ files = [], onAdd, onDelete, onArchive, onUna
   const visible = (showArchived ? files : files.filter(f => !f.archived))
     .slice()
     .sort((a, b) => {
+      // Pinned files always come first, regardless of the date sort
+      if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
       const da = getDate(a), db = getDate(b)
       return sortDir === 'desc' ? db.localeCompare(da) : da.localeCompare(db)
     })
@@ -112,7 +121,7 @@ export default function FileList({ files = [], onAdd, onDelete, onArchive, onUna
           </thead>
           <tbody>
             {paginated.map(file => (
-              <tr key={file.id} style={{ borderBottom: '1px solid var(--slate-100)', opacity: file.archived ? 0.5 : 1, background: file.archived ? 'var(--slate-50)' : 'transparent' }}>
+              <tr key={file.id} style={{ borderBottom: '1px solid var(--slate-100)', opacity: file.archived ? 0.5 : 1, background: file.archived ? 'var(--slate-50)' : file.pinned ? 'var(--blue-50)' : 'transparent' }}>
                 {/* File Name */}
                 <td style={{ padding: '10px 18px', maxWidth: 220 }}>
                   <a
@@ -125,6 +134,9 @@ export default function FileList({ files = [], onAdd, onDelete, onArchive, onUna
                   >
                     <LinkIcon />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+                    {file.pinned && (
+                      <span style={{ fontSize: 10, background: 'var(--blue-50)', color: 'var(--blue-600)', borderRadius: 4, padding: '1px 5px', fontWeight: 700, marginLeft: 2 }}>PINNED</span>
+                    )}
                     {file.archived && (
                       <span style={{ fontSize: 10, background: 'var(--slate-200)', color: 'var(--slate-500)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, marginLeft: 2 }}>ARCHIVED</span>
                     )}
@@ -146,6 +158,11 @@ export default function FileList({ files = [], onAdd, onDelete, onArchive, onUna
                 {/* Actions */}
                 <td style={{ padding: '10px 18px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'flex-end' }}>
+                    {onTogglePin && (
+                      <button className="btn btn-icon" style={{ padding: '5px 7px', color: file.pinned ? 'var(--blue-600)' : 'var(--slate-400)', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 6, display: 'flex', alignItems: 'center' }} onClick={() => onTogglePin(file.id, !file.pinned)} title={file.pinned ? 'Unpin' : 'Pin to top'}>
+                        <PinIcon filled={file.pinned} />
+                      </button>
+                    )}
                     {file.archived ? (
                       <button className="btn btn-icon" style={{ padding: '5px 7px', color: 'var(--slate-400)', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 6, display: 'flex', alignItems: 'center' }} onClick={() => onUnarchive(file.id)} title="Unarchive">
                         <UnarchiveIcon />

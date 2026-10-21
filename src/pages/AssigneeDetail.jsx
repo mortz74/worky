@@ -205,7 +205,7 @@ const TABS = [
 export default function AssigneeDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data, updateAssignee, updateTask, deleteTask, createReminder, showToast, user, fetchFilesForAssignee, addFileToEntity, removeFileFromEntity, setFileArchived } = useApp()
+  const { data, updateAssignee, updateTask, deleteTask, createReminder, showToast, user, fetchFilesForAssignee, addFileToEntity, removeFileFromEntity, setFileArchived, setFilePinned } = useApp()
 
   const [activeTab, setActiveTab]     = useState('tasks')
   const [files, setFiles]             = useState([])
@@ -248,6 +248,10 @@ export default function AssigneeDetail() {
   const handleRemoveFile   = async (fileId) => { await removeFileFromEntity('assignee', id, fileId); loadFiles() }
   const handleArchiveFile  = async (fileId) => { await setFileArchived(fileId, true);  loadFiles() }
   const handleUnarchiveFile = async (fileId) => { await setFileArchived(fileId, false); loadFiles() }
+  const handleTogglePin = async (fileId, pinned) => {
+    setFiles(fs => fs.map(f => f.id === fileId ? { ...f, pinned } : f))
+    if (!await setFilePinned('assignee', id, fileId, pinned)) loadFiles()
+  }
 
   const openEdit = (a) => {
     setForm({ name: a.name, email: a.email || '', dept: a.dept || '', notes: a.notes || '', notesUrl: a.notesUrl || '', color: a.color || COLORS[0] })
@@ -433,6 +437,7 @@ export default function AssigneeDetail() {
               onDelete={handleRemoveFile}
               onArchive={handleArchiveFile}
               onUnarchive={handleUnarchiveFile}
+              onTogglePin={handleTogglePin}
             />
             <AddFileModal open={showAddFile} onClose={() => setShowAddFile(false)} onSave={handleAddFile} />
           </div>
