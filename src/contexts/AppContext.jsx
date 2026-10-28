@@ -676,6 +676,15 @@ export function AppProvider({ children }) {
         { onConflict: 'project_id,file_id', ignoreDuplicates: true })
     }
 
+    // File added to a task → the file inherits the task's assignees and projects
+    if (type === 'task') {
+      const task = dataRef.current.tasks.find(t => t.id === entityId)
+      const assigneeRows = (task?.assigneeIds || []).map(id => ({ assignee_id: id, file_id: file.id, user_id: wsId }))
+      const projectRows  = (task?.projectIds  || []).map(id => ({ project_id: id,  file_id: file.id, user_id: wsId }))
+      if (assigneeRows.length) await sb.from('assignee_files').upsert(assigneeRows, { onConflict: 'assignee_id,file_id', ignoreDuplicates: true })
+      if (projectRows.length)  await sb.from('project_files').upsert(projectRows,  { onConflict: 'project_id,file_id',  ignoreDuplicates: true })
+    }
+
     return file
   }, [user, showToast, defaultProjectFor])
 
