@@ -659,6 +659,17 @@ export function AppProvider({ children }) {
     return true
   }, [showToast])
 
+  const setFileContext = useCallback(async (fileId, context) => {
+    const wsId = workspaceIdRef.current
+    const { error } = await sb
+      .from('files')
+      .update({ context })
+      .eq('id', fileId)
+      .eq('user_id', wsId)
+    if (error) { showToast(error.message, 'error'); return false }
+    return true
+  }, [showToast])
+
   // Pinning is per entity (stored on the junction row), so a file can be pinned on one page and not another
   const setFilePinned = useCallback(async (type, entityId, fileId, pinned) => {
     const wsId = workspaceIdRef.current
@@ -803,7 +814,7 @@ export function AppProvider({ children }) {
       updateAssignee, createAssignee, setOwnerAssignee,
       addWorkspaceMember, removeWorkspaceMember, loadWorkspaceMembers,
       fetchFilesForAssignee, fetchFilesForProject, fetchFilesForTask,
-      addFileToEntity, removeFileFromEntity, setFileArchived, setFilePinned,
+      addFileToEntity, removeFileFromEntity, setFileArchived, setFileContext, setFilePinned,
       createDepartment, deleteDepartment,
       createDomain, deleteDomain,
       createReminder, updateReminder, deleteReminder,

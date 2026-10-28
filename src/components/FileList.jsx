@@ -54,11 +54,20 @@ function SortIcon({ active, dir }) {
     : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="10" height="10" style={{ marginLeft: 3, color: 'var(--blue-500)' }}><polyline points="19 12 12 19 5 12"/></svg>
 }
 
-export default function FileList({ files = [], onAdd, onDelete, onArchive, onUnarchive, onTogglePin }) {
+export const FILE_CONTEXTS = ['Files', 'Email', 'Meeting Notes']
+const TAB_LABELS = { 'Files': 'Files', 'Email': 'Email', 'Meeting Notes': 'Meeting Notes' }
+const ctxOf = f => f.context || 'Files'
+
+export default function FileList({ files: allFiles = [], onAdd, onDelete, onArchive, onUnarchive, onTogglePin, onContextChange }) {
+  const [tab, setTab]                   = useState('Files')
   const [showArchived, setShowArchived] = useState(false)
   const [sortDir, setSortDir]           = useState('desc')
   const [page, setPage]                 = useState(1)
   const [pageSize, setPageSize]         = useState(10)
+
+  const files = allFiles.filter(f => ctxOf(f) === tab)
+  const tabCount = key => allFiles.filter(f => !f.archived && ctxOf(f) === key).length
+  const switchTab = key => { setTab(key); setPage(1) }
 
   const visible = (showArchived ? files : files.filter(f => !f.archived))
     .slice()
@@ -79,12 +88,14 @@ export default function FileList({ files = [], onAdd, onDelete, onArchive, onUna
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 16 }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--slate-200)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--slate-800)' }}>📎 Files</span>
-          <span style={{ fontSize: 11, fontWeight: 700, background: 'var(--slate-100)', color: 'var(--slate-500)', borderRadius: 10, padding: '1px 7px' }}>
-            {files.filter(f => !f.archived).length}
-          </span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 18px', borderBottom: '2px solid var(--slate-200)' }}>
+        <div className="page-tabs" style={{ margin: 0, borderBottom: 'none', overflow: 'visible' }}>
+          {FILE_CONTEXTS.map(key => (
+            <button key={key} className={`page-tab${tab === key ? ' active' : ''}`} onClick={() => switchTab(key)}>
+              {TAB_LABELS[key]}
+              <span className="page-tab-count">{tabCount(key)}</span>
+            </button>
+          ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {archivedCount > 0 && (
@@ -100,7 +111,7 @@ export default function FileList({ files = [], onAdd, onDelete, onArchive, onUna
       {/* Table */}
       {visible.length === 0 ? (
         <div style={{ padding: '28px 18px', textAlign: 'center', color: 'var(--slate-400)', fontSize: 13 }}>
-          {files.length === 0 ? 'No files attached yet.' : 'No active files. Turn on "Show Archived" to see archived files.'}
+          {files.length === 0 ? (tab === 'Files' ? 'No files attached yet.' : `Nothing in ${tab} yet.`) : 'No active files. Turn on "Show Archived" to see archived files.'}
         </div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -108,6 +119,7 @@ export default function FileList({ files = [], onAdd, onDelete, onArchive, onUna
             <tr style={{ background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-200)' }}>
               <th style={thBase}>File Name</th>
               <th style={thBase}>Description</th>
+              <th style={{ ...thBase, width: 130 }}>Context</th>
               <th
                 style={{ ...thBase, cursor: 'pointer', userSelect: 'none', width: 120, color: 'var(--blue-600)' }}
                 onClick={toggleSort}
@@ -148,6 +160,16 @@ export default function FileList({ files = [], onAdd, onDelete, onArchive, onUna
                   <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                     {file.description || <span style={{ color: 'var(--slate-300)' }}>—</span>}
                   </span>
+                </td>
+
+                {/* Context */}
+                <td style={{ padding: '10px 18px' }}>
+                  {onContextChange ? (
+                    <select value={ctxOf(file)} onChange={e => onContextChange(file.id, e.target.value)}
+                      style={{ fontSize: 12, padding: '3px 6px', border: '1px solid var(--slate-200)', borderRadius: 6, background: 'white', color: 'var(--slate-600)', cursor: 'pointer' }}>
+                      {FILE_CONTEXTS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  ) : <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>{ctxOf(file)}</span>}
                 </td>
 
                 {/* Date */}

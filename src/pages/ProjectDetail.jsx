@@ -97,7 +97,7 @@ function DeleteConfirmModal({ task, open, onClose, onConfirm }) {
 export default function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data, updateTask, updateProject, deleteTask, createReminder, showToast, fetchFilesForProject, addFileToEntity, removeFileFromEntity, setFileArchived, setFilePinned, isAdmin, projectCollaborators, addProjectCollaborator, removeProjectCollaborator, setProjectTaskVisibility, currentAssigneeId } = useApp()
+  const { data, updateTask, updateProject, deleteTask, createReminder, showToast, fetchFilesForProject, addFileToEntity, removeFileFromEntity, setFileArchived, setFileContext, setFilePinned, isAdmin, projectCollaborators, addProjectCollaborator, removeProjectCollaborator, setProjectTaskVisibility, currentAssigneeId } = useApp()
   const [activeTab, setActiveTab]     = useState('tasks')
   const [files, setFiles]             = useState([])
   const [showAddFile, setShowAddFile] = useState(false)
@@ -130,6 +130,10 @@ export default function ProjectDetail() {
     if (file) { setShowAddFile(false); loadFiles() }
   }
   const handleRemoveFile  = async (fileId) => { await removeFileFromEntity('project', id, fileId); loadFiles() }
+  const handleContextChange = async (fileId, context) => {
+    setFiles(fs => fs.map(f => f.id === fileId ? { ...f, context } : f))
+    if (!await setFileContext(fileId, context)) loadFiles()
+  }
   const handleArchiveFile = async (fileId) => { await setFileArchived(fileId, true);  loadFiles() }
   const handleUnarchive   = async (fileId) => { await setFileArchived(fileId, false); loadFiles() }
   const handleTogglePin = async (fileId, pinned) => {
@@ -300,6 +304,7 @@ export default function ProjectDetail() {
 
             {/* Files section */}
             <FileList
+              onContextChange={handleContextChange}
               files={files}
               onAdd={() => setShowAddFile(true)}
               onDelete={handleRemoveFile}
