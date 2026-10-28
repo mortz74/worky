@@ -50,7 +50,7 @@ function SortIcon({ col, sortCol, sortDir }) {
 }
 
 export default function Files() {
-  const { user, data, showToast } = useApp()
+  const { user, data, showToast, defaultProjectFor } = useApp()
   const navigate = useNavigate()
 
   const [files, setFiles]       = useState([])
@@ -356,6 +356,11 @@ export default function Files() {
     let reused = false
     let newAssigneeIds = form.assignee_ids
     let newProjectIds  = form.project_ids
+    // No project chosen → use the assignees' default project
+    if (newProjectIds.length === 0) {
+      const dp = defaultProjectFor(form.assignee_ids)
+      if (dp) newProjectIds = [dp]
+    }
     if (error?.code === '23505') {
       const existing = await findFileByLink(form.link.trim())
       if (existing) { file = existing; error = null; reused = true }
@@ -384,7 +389,7 @@ export default function Files() {
     }
 
     const assignees = form.assignee_ids.map(id => data.assignees.find(a => a.id === id)).filter(Boolean)
-    const projects  = form.project_ids.map(id => data.projects.find(p => p.id === id)).filter(Boolean)
+    const projects  = newProjectIds.map(id => data.projects.find(p => p.id === id)).filter(Boolean)
 
     if (reused) {
       await fetchFiles()

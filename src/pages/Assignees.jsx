@@ -83,6 +83,7 @@ function PhotoPicker({ photoPreview, existingPhotoUrl, color, initials, onPhotoC
 }
 
 function AssigneeForm({ form, set, photoPreview, existingPhotoUrl, onPhotoChange, onRemovePhoto, departments }) {
+  const { data } = useApp()
   return (
     <>
       {/* Photo */}
@@ -111,6 +112,13 @@ function AssigneeForm({ form, set, photoPreview, existingPhotoUrl, onPhotoChange
         <select className="form-select" value={form.dept} onChange={e => set('dept', e.target.value)}>
           <option value="">— No Department —</option>
           {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+        </select>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Default Project</label>
+        <select className="form-select" value={form.defaultProjectId} onChange={e => set('defaultProjectId', e.target.value)}>
+          <option value="">— None —</option>
+          {data.projects.filter(p => p.status !== 'archive').map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
         </select>
       </div>
       <div className="form-group">
@@ -147,7 +155,7 @@ export default function Assignees() {
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [editTarget, setEditTarget] = useState(null)
-  const [form, setForm] = useState({ name: '', email: '', dept: '', notes: '', notesUrl: '', color: COLORS[0] })
+  const [form, setForm] = useState({ name: '', email: '', dept: '', notes: '', notesUrl: '', defaultProjectId: '', color: COLORS[0] })
   const [photoFile, setPhotoFile] = useState(null)      // File object to upload
   const [photoPreview, setPhotoPreview] = useState('')  // object URL for preview
   const [removePhoto, setRemovePhoto] = useState(false) // flag to clear existing photo
@@ -180,7 +188,7 @@ export default function Assignees() {
   const handleRemovePhoto = () => { resetPhoto(); setRemovePhoto(true) }
 
   const openAdd = () => {
-    setForm({ name: '', email: '', dept: '', notes: '', notesUrl: '', color: COLORS[data.assignees.length % COLORS.length] })
+    setForm({ name: '', email: '', dept: '', notes: '', notesUrl: '', defaultProjectId: '', color: COLORS[data.assignees.length % COLORS.length] })
     resetPhoto()
     setShowAdd(true)
   }
@@ -188,7 +196,7 @@ export default function Assignees() {
   const openEdit = (e, assignee) => {
     e.stopPropagation()
     setEditTarget(assignee)
-    setForm({ name: assignee.name, email: assignee.email || '', dept: assignee.dept || '', notes: assignee.notes || '', notesUrl: assignee.notesUrl || '', color: assignee.color || COLORS[0] })
+    setForm({ name: assignee.name, email: assignee.email || '', dept: assignee.dept || '', notes: assignee.notes || '', notesUrl: assignee.notesUrl || '', defaultProjectId: assignee.defaultProjectId || '', color: assignee.color || COLORS[0] })
     resetPhoto()
   }
 
@@ -206,6 +214,7 @@ export default function Assignees() {
       dept: form.dept,
       notes: form.notes,
       notes_url: form.notesUrl.trim() || null,
+      default_project_id: form.defaultProjectId || null,
       color: form.color,
       initials: getInitials(form.name),
       photo_url: photoUrl,
@@ -231,6 +240,7 @@ export default function Assignees() {
       dept: form.dept,
       notes: form.notes,
       notes_url: form.notesUrl.trim() || null,
+      default_project_id: form.defaultProjectId || null,
       color: form.color,
       initials: getInitials(form.name),
       photo_url: photoUrl,
