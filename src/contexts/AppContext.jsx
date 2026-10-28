@@ -6,7 +6,7 @@ const AppContext = createContext(null)
 
 // ── DB → local mappers ────────────────────────────────────────
 const mapOwner    = r => ({ id: r.id, name: r.name, email: r.email, role: r.role || 'Owner', color: r.color || '#2563eb', initials: r.initials || r.name.slice(0,2).toUpperCase() })
-const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', notesUrl: r.notes_url || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false, authUserId: r.auth_user_id || null })
+const mapAssignee = r => ({ id: r.id, name: r.name, email: r.email, dept: r.dept || '', color: r.color || '#3b82f6', initials: r.initials || r.name.slice(0,2).toUpperCase(), notes: r.notes || '', notesUrl: r.notes_url || '', photoUrl: r.photo_url || '', isOwner: r.is_owner || false, authUserId: r.auth_user_id || null, defaultProjectId: r.default_project_id || null })
 const mapDomain      = r => ({ id: r.id, name: r.name })
 const mapDepartment  = r => ({ id: r.id, name: r.name })
 const mapProject  = r => ({ id: r.id, name: r.name, desc: r.description || '', start: r.start_date || '', due: r.due_date || '', end: r.end_date || '', status: r.status || 'active', emoji: r.emoji || '📁', tags: r.tags || [], photoUrl: r.photo_url || '', projectType: r.project_type || 'project', domain: r.domain || '', notesUrl: r.notes_url || '', createdBy: r.created_by || null, taskVisibility: r.task_visibility || 'assigned_only', goalId: r.goal_id || null })
@@ -98,6 +98,7 @@ const toLocalAssignee = u => {
   if ('photo_url'    in u) m.photoUrl   = u.photo_url
   if ('notes_url'    in u) m.notesUrl   = u.notes_url
   if ('is_owner'     in u) m.isOwner    = u.is_owner
+  if ('default_project_id' in u) m.defaultProjectId = u.default_project_id
   if ('auth_user_id' in u) m.authUserId = u.auth_user_id
   return m
 }
@@ -365,9 +366,32 @@ export function AppProvider({ children }) {
     return true
   }, [data.tasks, showToast])
 
+  // Default project for a set of assignees: the project most of them share as their default.
+  // No defaults, or a tie for the top spot → null (leave blank).
+  const defaultProjectFor = useCallback((assigneeIds = []) => {
+    const counts = {}
+    assigneeIds.forEach(id => {
+      const pid = dataRef.current.assignees.find(a => a.id === id)?.defaultProjectId
+      if (pid) counts[pid] = (counts[pid] || 0) + 1
+    })
+    const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1])
+    if (ranked.length === 0) return null
+    if (ranked.length > 1 && ranked[0][1] === ranked[1][1]) return null
+    return dataRef.current.projects.some(p => p.id === ranked[0][0]) ? ranked[0][0] : null
+  }, [])
+
   const createTask = useCallback(async (row) => {
     const wsId = workspaceIdRef.current
-    const { assignee_ids = [], project_ids = [], ...taskRow } = row
+    let { assignee_ids = [], project_ids = [], ...taskRow } = row
+
+    // No project chosen → fall back to the assignees' default project
+    if (project_ids.length === 0) {
+      const dp = defaultProjectFor(assignee_ids)
+      if (dp) {
+        project_ids = [dp]
+        if (!taskRow.domain) taskRow.domain = dataRef.current.projects.find(p => p.id === dp)?.domain || null
+      }
+    }
 
     // For projects with task_visibility='all', auto-include all collaborators
     const allAssigneeIds = new Set(assignee_ids)
@@ -644,8 +668,16 @@ export function AppProvider({ children }) {
     }
     if (inserted !== file) showToast('File already existed — linked the existing one')
 
+    // File added from an assignee's page → also file it under that assignee's default project
+    if (type === 'assignee') {
+      const dp = defaultProjectFor([entityId])
+      if (dp) await sb.from('project_files').upsert(
+        { project_id: dp, file_id: file.id, user_id: wsId },
+        { onConflict: 'project_id,file_id', ignoreDuplicates: true })
+    }
+
     return file
-  }, [user, showToast])
+  }, [user, showToast, defaultProjectFor])
 
   const removeFileFromEntity = useCallback(async (type, entityId, fileId) => {
     const wsId = workspaceIdRef.current
@@ -821,7 +853,7 @@ export function AppProvider({ children }) {
       workspaceMembers,
       projectCollaborators,
       getAssignee, getProject, getOwner,
-      updateTask, createTask, deleteTask,
+      updateTask, createTask, deleteTask, defaultProjectFor,
       updateProject, createProject,
       addProjectCollaborator, removeProjectCollaborator, setProjectTaskVisibility,
       updateAssignee, createAssignee, setOwnerAssignee,
