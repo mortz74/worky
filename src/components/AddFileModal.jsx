@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import Modal from './Modal'
+import { FILE_CONTEXTS } from './FileList'
 
 export default function AddFileModal({ open, onClose, onSave }) {
   const [name, setName]   = useState('')
   const [link, setLink]   = useState('')
   const [desc, setDesc]   = useState('')
+  const [context, setContext] = useState('Files')
+  const [contextTouched, setContextTouched] = useState(false)
   const [errors, setErrors] = useState({})
 
   const validate = () => {
@@ -18,11 +21,13 @@ export default function AddFileModal({ open, onClose, onSave }) {
   const handleSave = () => {
     const e = validate()
     if (Object.keys(e).length > 0) { setErrors(e); return }
-    onSave({ name: name.trim(), link: link.trim(), description: desc.trim() || null })
+    onSave({ name: name.trim(), link: link.trim(), description: desc.trim() || null, context })
+    setContext('Files'); setContextTouched(false)
     setName(''); setLink(''); setDesc(''); setErrors({})
   }
 
   const handleClose = () => {
+    setContext('Files'); setContextTouched(false)
     setName(''); setLink(''); setDesc(''); setErrors({})
     onClose()
   }
@@ -49,11 +54,24 @@ export default function AddFileModal({ open, onClose, onSave }) {
           <input
             className="form-input"
             value={name}
-            onChange={e => { setName(e.target.value); setErrors(v => ({ ...v, name: null })) }}
+            onChange={e => {
+              setName(e.target.value); setErrors(v => ({ ...v, name: null }))
+              if (!contextTouched && /meeting notes/i.test(e.target.value)) setContext('Meeting Notes')
+            }}
             placeholder="e.g. Q1 Sales Report"
             autoFocus
           />
           {errors.name && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>{errors.name}</div>}
+        </div>
+
+        {/* Context */}
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--slate-600)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+            Context
+          </label>
+          <select className="form-input" value={context} onChange={e => { setContext(e.target.value); setContextTouched(true) }}>
+            {FILE_CONTEXTS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
         </div>
 
         {/* Link */}

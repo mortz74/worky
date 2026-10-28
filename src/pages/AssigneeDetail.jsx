@@ -205,7 +205,7 @@ const TABS = [
 export default function AssigneeDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data, updateAssignee, updateTask, deleteTask, createReminder, showToast, user, fetchFilesForAssignee, addFileToEntity, removeFileFromEntity, setFileArchived, setFilePinned } = useApp()
+  const { data, updateAssignee, updateTask, deleteTask, createReminder, showToast, user, fetchFilesForAssignee, addFileToEntity, removeFileFromEntity, setFileArchived, setFileContext, setFilePinned } = useApp()
 
   const [activeTab, setActiveTab]     = useState('tasks')
   const [files, setFiles]             = useState([])
@@ -246,6 +246,10 @@ export default function AssigneeDetail() {
     if (file) { setShowAddFile(false); loadFiles() }
   }
   const handleRemoveFile   = async (fileId) => { await removeFileFromEntity('assignee', id, fileId); loadFiles() }
+  const handleContextChange = async (fileId, context) => {
+    setFiles(fs => fs.map(f => f.id === fileId ? { ...f, context } : f))
+    if (!await setFileContext(fileId, context)) loadFiles()
+  }
   const handleArchiveFile  = async (fileId) => { await setFileArchived(fileId, true);  loadFiles() }
   const handleUnarchiveFile = async (fileId) => { await setFileArchived(fileId, false); loadFiles() }
   const handleTogglePin = async (fileId, pinned) => {
@@ -432,6 +436,7 @@ export default function AssigneeDetail() {
 
             {/* Files section */}
             <FileList
+              onContextChange={handleContextChange}
               files={files}
               onAdd={() => setShowAddFile(true)}
               onDelete={handleRemoveFile}

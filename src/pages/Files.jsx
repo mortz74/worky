@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { FILE_CONTEXTS } from '../components/FileList'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../contexts/AppContext'
 import { sb } from '../lib/supabase'
@@ -34,7 +35,7 @@ const fmt = d => {
   return new Date(d).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-const EMPTY_FORM = { name: '', description: '', link: '', assignee_ids: [], project_ids: [] }
+const EMPTY_FORM = { name: '', context: 'Files', description: '', link: '', assignee_ids: [], project_ids: [] }
 
 function SortIcon({ col, sortCol, sortDir }) {
   if (sortCol !== col) return (
@@ -59,6 +60,7 @@ export default function Files() {
   // ── Toolbar filters ────────────────────────────────────────
   const [filterAssigneeIds, setFilterAssigneeIds] = useState([])
   const [filterProjectIds, setFilterProjectIds]   = useState([])
+  const [contextTab, setContextTab]   = useState('Files')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo]     = useState('')
 
@@ -89,6 +91,8 @@ export default function Files() {
   const [bulkField, setBulkField] = useState(null) // 'assignees' | 'projects'
   const [bulkMode, setBulkMode]   = useState('add') // 'add' | 'replace' | 'remove'
   const [bulkIds, setBulkIds]     = useState([])
+  const [bulkTarget, setBulkTarget] = useState(null) // file ids this dialog applies to; null = current selection
+  const [bulkContext, setBulkContext] = useState('Files')
   const [bulkSaving, setBulkSaving] = useState(false)
 
   useEffect(() => {
@@ -126,6 +130,7 @@ export default function Files() {
         createdAt: f.created_at || '',
         archived: f.archived || false,
         source: f.source || '',
+        context: f.context || 'Files',
         assignees: (f.assignee_files || [])
           .map(af => af.assignees)
           .filter(Boolean)
@@ -139,7 +144,7 @@ export default function Files() {
   }
 
   // ── Filtering ──────────────────────────────────────────────
-  const filtered = files.filter(f => {
+  const baseFiltered = files.filter(f => {
     if (!showArchived && f.archived) return false
 
     const q = search.toLowerCase()
@@ -153,6 +158,8 @@ export default function Files() {
 
     return true
   })
+  const filtered = baseFiltered.filter(f => f.context === contextTab)
+  const contextCount = c => baseFiltered.filter(f => f.context === c).length
 
   // ── Sorting ────────────────────────────────────────────────
   const sorted = [...filtered].sort((a, b) => {
@@ -186,7 +193,33 @@ export default function Files() {
   const allSelected  = sorted.length > 0 && sorted.every(f => selected.has(f.id))
   const toggleAll    = () => setSelected(allSelected ? new Set() : new Set(sorted.map(f => f.id)))
 
-  const openBulk = field => { setBulkField(field); setBulkMode('add'); setBulkIds([]) }
+  const targetIds = bulkTarget || [...selected]
+
+  const openBulk = field => { setBulkTarget(null); setBulkField(field); setBulkMode('add'); setBulkIds([]); setBulkContext('Files') }
+
+  // From a row's 3-dot menu: act on that one file, pre-filled with its current values
+  const openForFile = (file, field) => {
+    setMenuOpenId(null)
+    setBulkTarget([file.id])
+    setBulkField(field)
+    setBulkMode('replace')
+    setBulkIds(field === 'assignees' ? file.assignees.map(a => a.id) : field === 'projects' ? file.projects.map(p => p.id) : [])
+    setBulkContext(file.context || 'Files')
+  }
+
+  const closeBulk = () => { setBulkField(null); setBulkTarget(null) }
+
+  const handleBulkContextSave = async () => {
+    const ids = targetIds
+    setBulkSaving(true)
+    const { error } = await sb.from('files').update({ context: bulkContext }).in('id', ids).eq('user_id', user.id)
+    setBulkSaving(false)
+    if (error) { showToast(error.message, 'error'); return }
+    setFiles(fs => fs.map(f => ids.includes(f.id) ? { ...f, context: bulkContext } : f))
+    showToast(`Context set to ${bulkContext} on ${ids.length} file${ids.length === 1 ? '' : 's'}`)
+    closeBulk()
+    setSelected(new Set())
+  }
 
   const handleBulkSave = async () => {
     const isAssignees = bulkField === 'assignees'
@@ -194,7 +227,7 @@ export default function Files() {
     const fkCol  = isAssignees ? 'assignee_id' : 'project_id'
     const key    = isAssignees ? 'assignees' : 'projects'
     const lookup = isAssignees ? data.assignees : data.projects
-    const fileIds = [...selected]
+    const fileIds = targetIds
     setBulkSaving(true)
 
     // Work out the final set of ids for each file, then rewrite only files that change
@@ -227,7 +260,7 @@ export default function Files() {
 
     showToast(`${isAssignees ? 'Assignees' : 'Projects'} updated on ${changes.length} file${changes.length === 1 ? '' : 's'}`)
     setBulkSaving(false)
-    setBulkField(null)
+    closeBulk()
     setSelected(new Set())
   }
 
@@ -246,6 +279,7 @@ export default function Files() {
     setMenuOpenId(null)
     setEditForm({
       name: file.name,
+      context: file.context || 'Files',
       description: file.description,
       link: file.link,
       assignee_ids: file.assignees.map(a => a.id),
@@ -260,7 +294,7 @@ export default function Files() {
     setEditSaving(true)
 
     const { error } = await sb.from('files')
-      .update({ name: editForm.name.trim(), description: editForm.description.trim(), link: editForm.link.trim(), source: 'Front End' })
+      .update({ name: editForm.name.trim(), context: editForm.context, description: editForm.description.trim(), link: editForm.link.trim(), source: 'Front End' })
       .eq('id', editingFile.id).eq('user_id', user.id)
 
     if (error) { showToast(error.message, 'error'); setEditSaving(false); return }
@@ -285,7 +319,7 @@ export default function Files() {
     const projects  = editForm.project_ids.map(id => data.projects.find(p => p.id === id)).filter(Boolean)
 
     setFiles(fs => fs.map(f => f.id === editingFile.id
-      ? { ...f, name: editForm.name.trim(), description: editForm.description.trim(), link: editForm.link.trim(), source: 'Front End', assignees, projects }
+      ? { ...f, context: editForm.context, name: editForm.name.trim(), description: editForm.description.trim(), link: editForm.link.trim(), source: 'Front End', assignees, projects }
       : f
     ))
     showToast('File updated')
@@ -313,7 +347,7 @@ export default function Files() {
 
     const { data: file, error } = await sb
       .from('files')
-      .insert({ name: form.name.trim(), description: form.description.trim(), link: form.link.trim(), user_id: user.id, source: 'Front End' })
+      .insert({ name: form.name.trim(), context: form.context, description: form.description.trim(), link: form.link.trim(), user_id: user.id, source: 'Front End' })
       .select()
       .single()
 
@@ -336,7 +370,7 @@ export default function Files() {
     setFiles(fs => [{
       id: file.id, name: file.name, description: file.description || '',
       link: file.link || '', createdAt: file.created_at || '',
-      archived: false, source: 'Front End', assignees, projects,
+      archived: false, source: 'Front End', context: file.context || form.context, assignees, projects,
     }, ...fs])
 
     showToast('File created')
@@ -420,12 +454,24 @@ export default function Files() {
           </button>
         </div>
 
+        {/* ── Context tabs ── */}
+        <div className="page-tabs" style={{ marginBottom: 12 }}>
+          {FILE_CONTEXTS.map(c => (
+            <button key={c} className={`page-tab${contextTab === c ? ' active' : ''}`}
+              onClick={() => { setContextTab(c); setPage(1); setSelected(new Set()) }}>
+              {c}
+              <span className="page-tab-count">{contextCount(c)}</span>
+            </button>
+          ))}
+        </div>
+
         {/* ── Bulk action bar ── */}
         {selected.size > 0 && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', background: 'var(--blue-50)', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
             <span style={{ fontWeight: 600, marginRight: 4 }}>{selected.size} selected</span>
             <button className="btn btn-sm btn-secondary" onClick={() => openBulk('assignees')}>👤 Change Assignees</button>
             <button className="btn btn-sm btn-secondary" onClick={() => openBulk('projects')}>📁 Change Projects</button>
+            <button className="btn btn-sm btn-secondary" onClick={() => openBulk('context')}>🏷️ Change Context</button>
             <button className="btn btn-sm btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setSelected(new Set())}>✕ Clear</button>
           </div>
         )}
@@ -458,6 +504,7 @@ export default function Files() {
                   <th style={{ ...thStyle('project'), width: 220 }} onClick={() => handleSort('project')}>
                     PROJECTS <SortIcon col="project" sortCol={sortCol} sortDir={sortDir} />
                   </th>
+                  <th style={{ width: 130 }}>CONTEXT</th>
                   <th style={{ width: 110 }}>SOURCE</th>
                   <th style={{ width: 40 }} />
                 </tr>
@@ -543,6 +590,11 @@ export default function Files() {
                       )}
                     </td>
 
+                    {/* Context */}
+                    <td style={{ fontSize: 12, color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>
+                      {file.context}
+                    </td>
+
                     {/* Source */}
                     <td style={{ fontSize: 12, color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>
                       {file.source || <span style={{ color: 'var(--slate-300)' }}>—</span>}
@@ -562,7 +614,7 @@ export default function Files() {
                         <div ref={menuRef} style={{
                           position: 'absolute', right: 0, top: '100%', zIndex: 200,
                           background: 'var(--white)', border: '1px solid var(--slate-200)',
-                          borderRadius: 8, boxShadow: 'var(--shadow-lg)', minWidth: 140, padding: '4px 0',
+                          borderRadius: 8, boxShadow: 'var(--shadow-lg)', minWidth: 170, padding: '4px 0',
                         }}>
                           {[
                             {
@@ -570,6 +622,9 @@ export default function Files() {
                               icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
                               onClick: () => openEdit(file),
                             },
+                            { label: 'Change Project',  color: 'var(--slate-700)', icon: <span style={{ width: 14, textAlign: 'center' }}>📁</span>, onClick: () => openForFile(file, 'projects') },
+                            { label: 'Change Assignee', color: 'var(--slate-700)', icon: <span style={{ width: 14, textAlign: 'center' }}>👤</span>, onClick: () => openForFile(file, 'assignees') },
+                            { label: 'Change Context',  color: 'var(--slate-700)', icon: <span style={{ width: 14, textAlign: 'center' }}>🏷️</span>, onClick: () => openForFile(file, 'context') },
                             {
                               label: file.archived ? 'Unarchive' : 'Archive', color: 'var(--slate-700)',
                               icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>,
@@ -627,6 +682,13 @@ export default function Files() {
                   style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--slate-200)', borderRadius: 6, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--slate-500)', marginBottom: 5, letterSpacing: '.05em', textTransform: 'uppercase' }}>Context</label>
+                <select value={editForm.context} onChange={e => setEditForm(f => ({ ...f, context: e.target.value }))}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--slate-200)', borderRadius: 6, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'white' }}>
+                  {FILE_CONTEXTS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--slate-500)', marginBottom: 5, letterSpacing: '.05em', textTransform: 'uppercase' }}>Description</label>
                 <input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
                   style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--slate-200)', borderRadius: 6, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
@@ -663,18 +725,24 @@ export default function Files() {
       {/* ── Bulk Assignees / Projects Modal ── */}
       {bulkField && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onMouseDown={e => { if (e.target === e.currentTarget && !bulkSaving) setBulkField(null) }}>
+          onMouseDown={e => { if (e.target === e.currentTarget && !bulkSaving) closeBulk() }}>
           <div style={{ background: 'var(--white)', borderRadius: 12, width: 440, maxWidth: '95vw', boxShadow: 'var(--shadow-xl)', padding: '28px 28px 24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontWeight: 700, fontSize: 17 }}>Change {bulkField === 'assignees' ? 'Assignees' : 'Projects'}</span>
-              <button onClick={() => setBulkField(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)', padding: 4 }}>
+              <span style={{ fontWeight: 700, fontSize: 17 }}>Change {bulkField === 'assignees' ? 'Assignees' : bulkField === 'projects' ? 'Projects' : 'Context'}</span>
+              <button onClick={closeBulk} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)', padding: 4 }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
             <p style={{ fontSize: 13, color: 'var(--slate-500)', margin: '0 0 18px' }}>
-              Applies to {selected.size} selected file{selected.size === 1 ? '' : 's'}.
+              Applies to {bulkTarget ? 'this file' : `${selected.size} selected file${selected.size === 1 ? '' : 's'}`}.
             </p>
 
+            {bulkField === 'context' ? (
+              <select className="form-input" value={bulkContext} onChange={e => setBulkContext(e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--slate-200)', borderRadius: 6, fontSize: 14, background: 'white' }}>
+                {FILE_CONTEXTS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            ) : (<>
             <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
               {[
                 { id: 'add',     label: 'Add' },
@@ -701,11 +769,12 @@ export default function Files() {
               <MultiSelect options={data.projects.map(p => ({ id: p.id, label: p.name, prefix: p.emoji }))}
                 value={bulkIds} onChange={setBulkIds} placeholder="Select projects…" />
             )}
+            </>)}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setBulkField(null)} disabled={bulkSaving}>Cancel</button>
-              <button type="button" className="btn btn-primary" onClick={handleBulkSave}
-                disabled={bulkSaving || (bulkMode !== 'replace' && bulkIds.length === 0)}>
+              <button type="button" className="btn btn-secondary" onClick={closeBulk} disabled={bulkSaving}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={bulkField === 'context' ? handleBulkContextSave : handleBulkSave}
+                disabled={bulkSaving || (bulkField !== 'context' && bulkMode !== 'replace' && bulkIds.length === 0)}>
                 {bulkSaving ? 'Saving…' : 'Apply'}
               </button>
             </div>
@@ -750,6 +819,13 @@ export default function Files() {
                 <input autoFocus value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--slate-200)', borderRadius: 6, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
                   placeholder="Enter file name" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--slate-500)', marginBottom: 5, letterSpacing: '.05em', textTransform: 'uppercase' }}>Context</label>
+                <select value={form.context} onChange={e => setForm(f => ({ ...f, context: e.target.value }))}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--slate-200)', borderRadius: 6, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'white' }}>
+                  {FILE_CONTEXTS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--slate-500)', marginBottom: 5, letterSpacing: '.05em', textTransform: 'uppercase' }}>Description</label>

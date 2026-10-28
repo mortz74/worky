@@ -33,7 +33,7 @@ export default function TaskDetail() {
   const navigate = useNavigate()
   const location = useLocation()
   const returnTab = location.state?.returnTab
-  const { data, updateTask, deleteTask, showToast, fetchFilesForTask, addFileToEntity, removeFileFromEntity, setFileArchived } = useApp()
+  const { data, updateTask, deleteTask, showToast, fetchFilesForTask, addFileToEntity, removeFileFromEntity, setFileArchived, setFileContext } = useApp()
   const [showDelete, setShowDelete] = useState(false)
   const t = data.tasks.find(t => t.id === id)
   const [files, setFiles]             = useState([])
@@ -58,6 +58,10 @@ export default function TaskDetail() {
     if (file) { setShowAddFile(false); loadFiles() }
   }
   const handleRemoveFile  = async (fileId) => { await removeFileFromEntity('task', id, fileId); loadFiles() }
+  const handleContextChange = async (fileId, context) => {
+    setFiles(fs => fs.map(f => f.id === fileId ? { ...f, context } : f))
+    if (!await setFileContext(fileId, context)) loadFiles()
+  }
   const handleArchiveFile = async (fileId) => { await setFileArchived(fileId, true);  loadFiles() }
   const handleUnarchive   = async (fileId) => { await setFileArchived(fileId, false); loadFiles() }
 
@@ -194,6 +198,7 @@ export default function TaskDetail() {
             <ReminderSection entityType="task" entityId={id} singleOnly={true} />
 
             <FileList
+              onContextChange={handleContextChange}
               files={files}
               onAdd={() => setShowAddFile(true)}
               onDelete={handleRemoveFile}
