@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { FILE_CONTEXTS } from '../components/FileList'
+import { findFileByLink } from '../lib/fileLink'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../contexts/AppContext'
 import { sb } from '../lib/supabase'
@@ -345,27 +346,52 @@ export default function Files() {
     if (!form.name.trim()) return
     setSaving(true)
 
-    const { data: file, error } = await sb
+    let { data: file, error } = await sb
       .from('files')
       .insert({ name: form.name.trim(), context: form.context, description: form.description.trim(), link: form.link.trim(), user_id: user.id, source: 'Front End' })
       .select()
       .single()
 
+    // Link already exists (unique on files.link_key): reuse that file and add the chosen assignees/projects to it
+    let reused = false
+    let newAssigneeIds = form.assignee_ids
+    let newProjectIds  = form.project_ids
+    if (error?.code === '23505') {
+      const existing = await findFileByLink(form.link.trim())
+      if (existing) { file = existing; error = null; reused = true }
+    }
     if (error) { showToast(error.message, 'error'); setSaving(false); return }
 
-    if (form.assignee_ids.length > 0) {
+    if (reused) {
+      // Skip links that already exist so the inserts below can't fail on the primary key
+      const [{ data: af }, { data: pf }] = await Promise.all([
+        sb.from('assignee_files').select('assignee_id').eq('file_id', file.id),
+        sb.from('project_files').select('project_id').eq('file_id', file.id),
+      ])
+      newAssigneeIds = form.assignee_ids.filter(id => !(af || []).some(r => r.assignee_id === id))
+      newProjectIds  = form.project_ids.filter(id => !(pf || []).some(r => r.project_id === id))
+    }
+
+    if (newAssigneeIds.length > 0) {
       await sb.from('assignee_files').insert(
-        form.assignee_ids.map(aid => ({ assignee_id: aid, file_id: file.id, user_id: user.id }))
+        newAssigneeIds.map(aid => ({ assignee_id: aid, file_id: file.id, user_id: user.id }))
       )
     }
-    if (form.project_ids.length > 0) {
+    if (newProjectIds.length > 0) {
       await sb.from('project_files').insert(
-        form.project_ids.map(pid => ({ project_id: pid, file_id: file.id, user_id: user.id }))
+        newProjectIds.map(pid => ({ project_id: pid, file_id: file.id, user_id: user.id }))
       )
     }
 
     const assignees = form.assignee_ids.map(id => data.assignees.find(a => a.id === id)).filter(Boolean)
     const projects  = form.project_ids.map(id => data.projects.find(p => p.id === id)).filter(Boolean)
+
+    if (reused) {
+      await fetchFiles()
+      showToast('File already existed — linked the existing one')
+      setForm(EMPTY_FORM); setShowModal(false); setSaving(false)
+      return
+    }
 
     setFiles(fs => [{
       id: file.id, name: file.name, description: file.description || '',

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { sb } from '../lib/supabase'
+import { findFileByLink } from '../lib/fileLink'
 
 const AppContext = createContext(null)
 
@@ -617,19 +618,31 @@ export function AppProvider({ children }) {
 
   const addFileToEntity = useCallback(async (type, entityId, fileData) => {
     const wsId = workspaceIdRef.current
-    const { data: file, error: fileErr } = await sb
+    let file
+    const { data: inserted, error: fileErr } = await sb
       .from('files')
       .insert({ ...fileData, user_id: wsId, created_by: user?.id })
       .select()
       .single()
-    if (fileErr) { showToast(fileErr.message, 'error'); return null }
+    if (fileErr) {
+      // Same link already exists (unique on files.link_key): link the existing file instead
+      const existing = fileErr.code === '23505' ? await findFileByLink(fileData.link) : null
+      if (!existing) { showToast(fileErr.message, 'error'); return null }
+      file = existing
+    } else {
+      file = inserted
+    }
 
     const table = junctionTable(type)
     const fk    = junctionFk(type)
     const { error: jErr } = await sb
       .from(table)
       .insert({ [fk]: entityId, file_id: file.id, user_id: wsId })
-    if (jErr) { showToast(jErr.message, 'error'); return null }
+    if (jErr) {
+      if (jErr.code === '23505') { showToast('This file is already linked here', 'error'); return null }
+      showToast(jErr.message, 'error'); return null
+    }
+    if (inserted !== file) showToast('File already existed — linked the existing one')
 
     return file
   }, [user, showToast])
